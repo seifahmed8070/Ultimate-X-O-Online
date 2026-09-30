@@ -23,6 +23,9 @@
 .theme-cyberpunk .undo-btn { background-color: #d97706; color: white; }
 .theme-cyberpunk .theme-select { background-color: #111d2f; border: 1px solid #233956; color: #00e676; }
 .theme-cyberpunk .input-field { background-color: #0b1320; border: 1px solid #233956; color: white; }
+.theme-cyberpunk.board-my-turn, .theme-cyberpunk .board-my-turn { border-color: #00b4d8 !important; box-shadow: 0 0 18px rgba(0, 180, 216, 0.4); }
+.theme-cyberpunk .my-turn-local { border-color: #00e676 !important; background-color: rgba(0, 230, 118, 0.12) !important; box-shadow: 0 0 12px rgba(0, 230, 118, 0.4); }
+.theme-cyberpunk .waiting-local { border-color: #233956 !important; }
 
 /* ================= ثيم 2: Matrix Emerald ================= */
 .theme-matrix {
@@ -42,6 +45,9 @@
 .theme-matrix .undo-btn { background-color: #ca8a04; color: white; }
 .theme-matrix .theme-select { background-color: #06150a; border: 1px solid #14532d; color: #4ade80; }
 .theme-matrix .input-field { background-color: #020804; border: 1px solid #14532d; color: white; }
+.theme-matrix.board-my-turn, .theme-matrix .board-my-turn { border-color: #4ade80 !important; box-shadow: 0 0 18px rgba(74, 222, 128, 0.35); }
+.theme-matrix .my-turn-local { border-color: #4ade80 !important; background-color: rgba(74, 222, 128, 0.12) !important; box-shadow: 0 0 12px rgba(74, 222, 128, 0.4); }
+.theme-matrix .waiting-local { border-color: #14532d !important; }
 
 /* ================= ثيم 3: Dark Obsidian ================= */
 .theme-obsidian {
@@ -61,6 +67,9 @@
 .theme-obsidian .undo-btn { background-color: #71717a; color: white; }
 .theme-obsidian .theme-select { background-color: #121216; border: 1px solid #27272a; color: #f4f4f5; }
 .theme-obsidian .input-field { background-color: #09090b; border: 1px solid #27272a; color: white; }
+.theme-obsidian.board-my-turn, .theme-obsidian .board-my-turn { border-color: #e4e4e7 !important; box-shadow: 0 0 18px rgba(228, 228, 231, 0.28); }
+.theme-obsidian .my-turn-local { border-color: #f4f4f5 !important; background-color: rgba(244, 244, 245, 0.08) !important; box-shadow: 0 0 12px rgba(244, 244, 245, 0.25); }
+.theme-obsidian .waiting-local { border-color: #3f3f46 !important; }
 
 /* ================= ثيم 4: Sunset Vaporwave ================= */
 .theme-vaporwave {
@@ -80,17 +89,34 @@
 .theme-vaporwave .undo-btn { background-color: #9333ea; color: white; }
 .theme-vaporwave .theme-select { background-color: #1e1333; border: 1px solid #4c1d95; color: #f472b6; }
 .theme-vaporwave .input-field { background-color: #120b1f; border: 1px solid #4c1d95; color: white; }
+.theme-vaporwave.board-my-turn, .theme-vaporwave .board-my-turn { border-color: #ec4899 !important; box-shadow: 0 0 18px rgba(236, 72, 153, 0.4); }
+.theme-vaporwave .my-turn-local { border-color: #f472b6 !important; background-color: rgba(244, 114, 182, 0.14) !important; box-shadow: 0 0 12px rgba(244, 114, 182, 0.4); }
+.theme-vaporwave .waiting-local { border-color: #581c87 !important; }
+
+.app-shell {
+    justify-content: flex-start;
+    gap: 8px;
+}
+.header-bar h1 {
+    font-size: 1.05rem;
+}
+.leave-btn {
+    background: #be123c;
+}
+.leave-btn.hidden {
+    display: none !important;
+}
 
 /* Network Grid Layout */
 .ultimate-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
+    gap: 6px;
 }
 .local-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 4px;
+    gap: 3px;
 }
 
 /* Screen Shake Effect */
@@ -106,20 +132,6 @@
     animation: shake 0.4s ease-in-out;
 }
 
-.board-my-turn {
-    border-color: #22c55e !important;
-    box-shadow: 0 0 28px rgba(34, 197, 94, 0.45);
-}
 .board-locked {
-    opacity: 0.78;
-    filter: grayscale(0.15);
-}
-.my-turn-local {
-    border-color: #22c55e !important;
-    background-color: rgba(34, 197, 94, 0.12) !important;
-    box-shadow: 0 0 16px rgba(34, 197, 94, 0.55);
-}
-.waiting-local {
-    border-color: #64748b !important;
-    box-shadow: 0 0 8px rgba(100, 116, 139, 0.35);
+    opacity: 0.82;
 }

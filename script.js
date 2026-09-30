@@ -53,6 +53,7 @@ const ultimateBoard = document.getElementById('ultimateBoard');
 const mainBoardContainer = document.getElementById('mainBoardContainer');
 const turnIndicator = document.getElementById('turnIndicator');
 const resetBtn = document.getElementById('resetBtn');
+const leaveRoomBtn = document.getElementById('leaveRoomBtn');
 const scoreXEl = document.getElementById('scoreX');
 const scoreOEl = document.getElementById('scoreO');
 
@@ -159,8 +160,10 @@ let currentTheme = storageGet('ultimate_theme', 'theme-cyberpunk') || 'theme-cyb
 
 let currentMatchId = null;
 let myRole = 'X';
+let opponentName = '';
 let activeMatchUnsubscribe = null;
 let activeChallengeRef = null;
+let roomRestored = false;
 
 htmlRoot.className = currentTheme;
 themeSelector.value = currentTheme;
@@ -275,30 +278,101 @@ function whenFirebaseReady(callback) {
     window.addEventListener('firebase-ready', callback, { once: true });
 }
 
-function registerOnlinePresence() {
-    if (!window.db) return;
+function persistRoom() {
+    storageSet('ultimate_match_id', currentMatchId || '');
+    storageSet('ultimate_match_role', myRole || '');
+    storageSet('ultimate_match_vs', opponentName || '');
+}
+
+function clearPersistedRoom() {
+    storageSet('ultimate_match_id', '');
+    storageSet('ultimate_match_role', '');
+    storageSet('ultimate_match_vs', '');
+}
+
+function isBusyStatus(status) {
+    return status === 'in-game' || status === 'waiting';
+}
+
+function updatePresence(statusOverride) {
+    if (!window.db || !playerId) return;
+    const inRoom = !!(currentMatchId && (gameMode === 'online-p2p' || statusOverride === 'waiting' || statusOverride === 'in-game'));
+    const status = statusOverride || (inRoom ? 'in-game' : 'online');
     const userRef = window.dbRef(window.db, 'players/' + playerId);
-    window.dbSet(userRef, { 
-        name: playerName, 
-        points: userArenaPoints, 
-        status: 'online', 
-        lastActive: Date.now() 
+    window.dbUpdate(userRef, {
+        name: playerName,
+        points: userArenaPoints,
+        status: status,
+        matchId: currentMatchId || '-',
+        connected: true,
+        lastActive: Date.now()
     });
+}
 
-    if (window.dbOnDisconnect) {
-        window.dbOnDisconnect(userRef).remove();
-    }
+function enterOnlineRoom(matchId, role, vsName, waiting) {
+    currentMatchId = matchId;
+    myRole = role;
+    opponentName = vsName || opponentName;
+    gameMode = 'online-p2p';
+    persistRoom();
+    mainMenu.style.display = 'none';
+    onlineLobbyModal.style.display = 'none';
+    nameModal.style.display = 'none';
+    if (!waiting) challengeModal.style.display = 'none';
+    gameModeBadge.textContent = opponentName ? `Online vs ${opponentName}` : 'Online Match';
+    if (resetBtn) resetBtn.classList.add('hidden');
+    if (leaveRoomBtn) leaveRoomBtn.classList.remove('hidden');
+    updatePresence(waiting ? 'waiting' : 'in-game');
+    listenToMatch(matchId);
+}
 
-    if (activeChallengeRef) {
-        activeChallengeRef();
+function leaveOnlineRoom(notifyServer) {
+    playSound('click');
+    if (notifyServer && window.db && currentMatchId) {
+        try {
+            window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), {
+                status: 'abandoned',
+                leftBy: playerId
+            });
+        } catch (e) {}
     }
-    const challengeRef = window.dbRef(window.db, 'challenges/' + playerId);
-    activeChallengeRef = window.dbOnValue(challengeRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data && data.status === 'pending') {
-            showIncomingChallenge(data);
-        }
+    if (activeMatchUnsubscribe) {
+        activeMatchUnsubscribe();
+        activeMatchUnsubscribe = null;
+    }
+    currentMatchId = null;
+    opponentName = '';
+    gameMode = 'pve';
+    myRole = 'X';
+    clearPersistedRoom();
+    if (resetBtn) resetBtn.classList.remove('hidden');
+    if (leaveRoomBtn) leaveRoomBtn.classList.add('hidden');
+    challengeModal.style.display = 'none';
+    victoryModal.style.display = 'none';
+    mainMenu.style.display = 'flex';
+    gameModeBadge.textContent = 'Offline Mode';
+    updatePresence('online');
+    initGame();
+}
+
+function tryRestoreOnlineRoom() {
+    const savedId = storageGet('ultimate_match_id', '');
+    if (!savedId) return false;
+    roomRestored = true;
+    currentMatchId = savedId;
+    myRole = storageGet('ultimate_match_role', 'X') || 'X';
+    opponentName = storageGet('ultimate_match_vs', '');
+    gameMode = 'online-p2p';
+    mainMenu.style.display = 'none';
+    nameModal.style.display = 'none';
+    gameModeBadge.textContent = opponentName ? `Online vs ${opponentName}` : 'Online Match';
+    if (resetBtn) resetBtn.classList.add('hidden');
+    if (leaveRoomBtn) leaveRoomBtn.classList.remove('hidden');
+    whenFirebaseReady(() => {
+        updatePresence('in-game');
+        listenToMatch(savedId);
     });
+    return true;
 }
 
 function fetchGlobalLeaderboard() {

@@ -33,7 +33,7 @@
       window.dispatchEvent(new Event('firebase-ready'));
     </script>
 </head>
-<body class="min-h-screen flex flex-col items-center justify-between p-4 selection:bg-cyan-500 selection:text-white">
+<body class="app-shell min-h-screen flex flex-col items-center p-2 selection:bg-cyan-500 selection:text-white">
 
     <!-- نافذة إدخال الاسم لأول مرة -->
     <div id="nameModal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-md">
@@ -125,7 +125,7 @@
         </div>
     </div>
 
-    <header class="text-center my-2 w-full max-w-lg flex justify-between items-center px-2">
+    <header class="header-bar w-full max-w-lg flex justify-between items-center px-1">
         <div>
             <h1 class="text-xl md:text-2xl font-black brand-title tracking-wider uppercase text-right cursor-pointer" id="backToMenuHeader">
                 Ultimate X/O
@@ -145,21 +145,24 @@
         </div>
     </header>
 
-    <div class="w-full max-w-lg control-panel border p-3 rounded-2xl shadow-xl flex flex-col gap-3 mb-4">
-        <div class="flex flex-wrap justify-between items-center gap-2">
-            <div class="text-sm font-bold sub-box px-3 py-1.5 rounded-xl border">
-                Turn: <span id="turnIndicator" class="font-extrabold text-lg">X</span>
+    <div class="w-full max-w-lg control-panel border px-2 py-1.5 rounded-xl shadow-lg flex flex-col">
+        <div class="flex flex-wrap justify-between items-center gap-1.5">
+            <div class="text-xs font-bold sub-box px-2 py-1 rounded-lg border">
+                Turn: <span id="turnIndicator" class="font-extrabold text-base">X</span>
             </div>
-            <div class="text-sm font-bold sub-box px-3 py-1.5 rounded-xl border">
+            <div class="text-xs font-bold sub-box px-2 py-1 rounded-lg border">
                 Score: <span class="score-x" id="scoreX">0</span> - <span class="score-o" id="scoreO">0</span>
             </div>
-            <button id="resetBtn" class="action-btn text-white font-bold px-3 py-1.5 rounded-xl shadow-lg transition-all text-xs">
+            <button id="resetBtn" class="action-btn text-white font-bold px-2.5 py-1 rounded-lg shadow transition-all text-xs">
                 Restart
+            </button>
+            <button id="leaveRoomBtn" class="leave-btn text-white font-bold px-2.5 py-1 rounded-lg shadow transition-all text-xs hidden">
+                Leave Room
             </button>
         </div>
     </div>
 
-    <main id="mainBoardContainer" class="w-full max-w-lg main-board-wrapper p-3 md:p-4 rounded-2xl border-2 shadow-2xl relative">
+    <main id="mainBoardContainer" class="w-full max-w-lg main-board-wrapper p-2 rounded-xl border-2 shadow-xl relative">
         <div id="ultimateBoard" class="ultimate-grid"></div>
     </main>
 

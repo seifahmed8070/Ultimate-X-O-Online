@@ -80,12 +80,17 @@ resetDataBtn.addEventListener('click', () => {
     playSound('click');
     if (confirm('Are you sure you want to reset your local data and name?')) {
         if (window.db && playerId) {
-            // مسح الوجود القديم من الفايربيس
             window.dbRemove(window.dbRef(window.db, 'players/' + playerId));
         }
         localStorage.clear();
         alert('Data cleared successfully! The page will reload.');
         location.reload();
+    }
+});
+
+window.addEventListener('beforeunload', () => {
+    if (window.db && playerId) {
+        window.dbRemove(window.dbRef(window.db, 'players/' + playerId));
     }
 });
 
@@ -128,6 +133,7 @@ let currentTheme = localStorage.getItem('ultimate_theme') || 'theme-cyberpunk';
 
 let currentMatchId = null;
 let myRole = 'X';
+let activeMatchUnsubscribe = null;
 
 htmlRoot.className = currentTheme;
 themeSelector.value = currentTheme;
@@ -301,23 +307,9 @@ function sendChallenge(targetId, targetName) {
     });
 
     alert(`Challenge sent to ${targetName}! Waiting for response...`);
+    gameModeBadge.textContent = `Online vs ${targetName}`;
 
-    window.dbOnValue(matchRef, (snapshot) => {
-        const matchData = snapshot.val();
-        if (matchData && matchData.status === 'playing') {
-            if (mainMenu.style.display !== 'none') {
-                mainMenu.style.display = 'none';
-                gameMode = 'online-p2p';
-                gameModeBadge.textContent = `Online vs ${targetName}`;
-            }
-            boardStates = matchData.boardStates || Array(9).fill().map(() => Array(9).fill(''));
-            boardWins = matchData.boardWins || Array(9).fill(null);
-            activeBoardIndex = matchData.activeBoardIndex;
-            currentPlayer = matchData.currentPlayer || 'X';
-            renderBoard();
-            updateStatus();
-        }
-    });
+    listenToMatch(currentMatchId);
 }
 
 let activeChallengeData = null;
@@ -356,14 +348,25 @@ rejectChallengeBtn.onclick = () => {
 };
 
 function listenToMatch(matchId) {
+    if (activeMatchUnsubscribe) {
+        activeMatchUnsubscribe();
+    }
     const matchRef = window.dbRef(window.db, 'matches/' + matchId);
-    window.dbOnValue(matchRef, (snapshot) => {
+    activeMatchUnsubscribe = window.dbOnValue(matchRef, (snapshot) => {
         const data = snapshot.val();
         if (data) {
             boardStates = data.boardStates || Array(9).fill().map(() => Array(9).fill(''));
             boardWins = data.boardWins || Array(9).fill(null);
             activeBoardIndex = data.activeBoardIndex;
             currentPlayer = data.currentPlayer || 'X';
+            
+            if (data.status === 'playing') {
+                mainMenu.style.display = 'none';
+                onlineLobbyModal.style.display = 'none';
+                challengeModal.style.display = 'none';
+                aiDifficultyModal.style.display = 'none';
+                gameMode = 'online-p2p';
+            }
             renderBoard();
             updateStatus();
         }

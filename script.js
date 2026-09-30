@@ -67,15 +67,7 @@ const statPoints = document.getElementById('statPoints');
 const statTotal = document.getElementById('statTotal');
 
 // زرار الخروج من الروم أونلاين
-const leaveRoomBtn = document.createElement('button');
-leaveRoomBtn.id = 'leaveRoomBtn';
-leaveRoomBtn.className = 'hidden bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1.5 rounded-xl shadow-lg transition-all text-xs';
-leaveRoomBtn.textContent = '🚪 Leave Room';
-
-const controlPanelContainer = document.querySelector('.control-panel > div');
-if (controlPanelContainer) {
-    controlPanelContainer.appendChild(leaveRoomBtn);
-}
+const leaveRoomBtn = document.getElementById('leaveRoomBtn');
 
 // زرار مسح البيانات
 const resetDataBtn = document.createElement('button');
@@ -442,6 +434,21 @@ function leaveRoom() {
     initGame();
 }
 
+// دالة تصفير اللعبة الموحدة (أونلاين وأوفلاين)
+function restartMatch() {
+    if (gameMode === 'online-p2p' && currentMatchId && window.db) {
+        const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
+        window.dbUpdate(matchRef, {
+            boardStates: Array(9).fill().map(() => Array(9).fill('')),
+            boardWins: Array(9).fill(null),
+            activeBoardIndex: null,
+            currentPlayer: 'X'
+        });
+    } else {
+        initGame();
+    }
+}
+
 function sanitizeArray(arr, defaultVal) {
     if (!arr) return defaultVal;
     if (Array.isArray(arr)) {
@@ -465,6 +472,12 @@ function listenToMatch(matchId) {
             boardWins = sanitizeArray(data.boardWins, Array(9).fill(null));
             activeBoardIndex = data.activeBoardIndex !== undefined ? data.activeBoardIndex : null;
             currentPlayer = data.currentPlayer || 'X';
+            
+            // إخفاء نافذة الفوز فوراً لو حد عمل ريستارت والمصفوفات رجعت فاضية
+            const isBoardReset = boardWins.every(win => win === null);
+            if (isBoardReset) {
+                victoryModal.style.display = 'none';
+            }
             
             if (data.status === 'playing') {
                 mainMenu.style.display = 'none';
@@ -524,9 +537,11 @@ function initGame() {
 
 function renderBoard() {
     ultimateBoard.innerHTML = '';
+    
     for (let b = 0; b < 9; b++) {
         const localBoardDiv = document.createElement('div');
         localBoardDiv.className = 'local-grid local-board-bg p-2 rounded-xl border-2 transition-all relative overflow-hidden';
+        
         const isBoardActive = (activeBoardIndex === null || activeBoardIndex === b);
         
         if (boardWins[b]) {
@@ -536,7 +551,16 @@ function renderBoard() {
             overlay.textContent = boardWins[b];
             localBoardDiv.appendChild(overlay);
         } else if (isBoardActive) {
-            localBoardDiv.className += ' active-local-board shadow-[0_0_15px_rgba(59,130,246,0.3)]';
+            // تفعيل الـ CSS الذكي بتاعك للإضاءة حسب الدور
+            if (gameMode === 'online-p2p') {
+                if (currentPlayer === myRole) {
+                    localBoardDiv.className += ' my-turn-local';
+                } else {
+                    localBoardDiv.className += ' waiting-local opacity-60';
+                }
+            } else {
+                localBoardDiv.className += ' active-local-board';
+            }
         } else {
             localBoardDiv.className += ' opacity-40';
         }
@@ -651,12 +675,15 @@ function handleMatchEnd(winner) {
 
     victoryTitle.textContent = `${winner} WINS THE MATCH! (+3 pts)`;
     victoryModal.style.display = 'flex';
-    nextRoundBtn.onclick = initGame;
+    
+    // ربط زرار النهاية בדالة المزامنة الأونلاين
+    nextRoundBtn.onclick = restartMatch;
 }
 
 function updateStatus() {
     turnIndicator.textContent = currentPlayer;
 }
 
-resetBtn.addEventListener('click', () => { playSound('click'); initGame(); });
+// ربط زرار الريستارت بدالة المزامنة الأونلاين
+resetBtn.addEventListener('click', () => { playSound('click'); restartMatch(); });
 checkPlayerName();

@@ -66,10 +66,10 @@ const closeStatsBtn = document.getElementById('closeStatsBtn');
 const statPoints = document.getElementById('statPoints');
 const statTotal = document.getElementById('statTotal');
 
-// زرار مسح البيانات المطور (يحذف من السيرفر فوراً أولاً)
+// زرار مسح البيانات
 const resetDataBtn = document.createElement('button');
 resetDataBtn.id = 'resetDataBtn';
-resetDataBtn.className = 'w-full bg-rose-600/80 hover:bg-rose-600 text-white font-bold py-2.5 rounded-xl text-sm mb-2 shadow-lg transition-all';
+resetDataBtn.className = 'w-full bg-rose-600/85 hover:bg-rose-600 text-white font-bold py-2.5 rounded-xl text-sm mb-2 shadow-lg transition-all';
 resetDataBtn.textContent = '🗑️ Reset Local Data & Profile';
 
 if (statsModal) {
@@ -82,6 +82,7 @@ resetDataBtn.addEventListener('click', async () => {
         if (window.db && playerId) {
             try {
                 await window.dbRemove(window.dbRef(window.db, 'players/' + playerId));
+                await window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId));
             } catch (e) {
                 console.log(e);
             }
@@ -120,7 +121,7 @@ let activeBoardIndex = null;
 let boardWins = Array(9).fill(null); 
 let boardStates = Array(9).fill().map(() => Array(9).fill(''));
 
-let playerName = localStorage.getItem('ultimate_player_name') || '';
+let playerName = localStorage.getItem('ultimate_player_name'] || '';
 let playerId = localStorage.getItem('ultimate_player_id') || 'p_' + Math.random().toString(36).substring(2, 9);
 localStorage.setItem('ultimate_player_id', playerId);
 
@@ -132,6 +133,7 @@ let currentTheme = localStorage.getItem('ultimate_theme') || 'theme-cyberpunk';
 let currentMatchId = null;
 let myRole = 'X';
 let activeMatchUnsubscribe = null;
+let activeChallengeRef = null;
 
 htmlRoot.className = currentTheme;
 themeSelector.value = currentTheme;
@@ -182,10 +184,11 @@ if (closeStatsBtn) {
 }
 
 function checkPlayerName() {
-    if (!playerName) {
+    if (!localStorage.getItem('ultimate_player_name')) {
         nameModal.style.display = 'flex';
         mainMenu.style.display = 'flex';
     } else {
+        playerName = localStorage.getItem('ultimate_player_name');
         nameModal.style.display = 'none';
         mainMenu.style.display = 'flex';
         menuUsername.textContent = playerName;
@@ -220,13 +223,15 @@ function registerOnlinePresence() {
         lastActive: Date.now() 
     });
 
-    // تنظيف تلقائي عبر الفايربيس لو الجهاز قفل أو فصل فجأة لمنع الأشباح
     if (window.dbOnDisconnect) {
         window.dbOnDisconnect(userRef).remove();
     }
 
+    if (activeChallengeRef) {
+        activeChallengeRef();
+    }
     const challengeRef = window.dbRef(window.db, 'challenges/' + playerId);
-    window.dbOnValue(challengeRef, (snapshot) => {
+    activeChallengeRef = window.dbOnValue(challengeRef, (snapshot) => {
         const data = snapshot.val();
         if (data && data.status === 'pending') {
             showIncomingChallenge(data);
@@ -275,8 +280,10 @@ function fetchOnlinePlayers() {
             return;
         }
 
+        let count = 0;
         Object.keys(players).forEach(id => {
             if (id === playerId) return;
+            count++;
             let p = players[id];
             let div = document.createElement('div');
             div.className = 'sub-box p-2.5 rounded-xl border flex justify-between items-center text-xs font-bold';
@@ -284,6 +291,10 @@ function fetchOnlinePlayers() {
             div.querySelector('button').addEventListener('click', () => sendChallenge(id, p.name));
             onlinePlayersList.appendChild(div);
         });
+
+        if (count === 0) {
+            onlinePlayersList.innerHTML = '<p class="text-xs text-center opacity-50 py-4">No other players online. Open another browser/device!</p>';
+        }
     });
 }
 
@@ -292,10 +303,13 @@ function sendChallenge(targetId, targetName) {
     myRole = 'X';
     currentMatchId = playerId < targetId ? playerId + '_' + targetId : targetId + '_' + playerId;
     
+    const initialBoardStates = Array(9).fill().map(() => Array(9).fill(''));
+    const initialBoardWins = Array(9).fill(null);
+
     const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
     window.dbSet(matchRef, {
-        boardStates: Array(9).fill().map(() => Array(9).fill('')),
-        boardWins: Array(9).fill(null),
+        boardStates: initialBoardStates,
+        boardWins: initialBoardWins,
         activeBoardIndex: null,
         currentPlayer: 'X',
         status: 'waiting'
@@ -309,18 +323,25 @@ function sendChallenge(targetId, targetName) {
         status: 'pending' 
     });
 
-    alert(`Challenge sent to ${targetName}! Waiting for response...`);
-    gameModeBadge.textContent = `Online vs ${targetName}`;
+    onlineLobbyModal.style.display = 'none';
+    challengeTitle.textContent = `Waiting for ${targetName}...`;
+    challengeText.textContent = `Challenge sent! Waiting for them to accept.`;
+    challengeActionButtons.style.display = 'none';
+    challengeModal.style.display = 'flex';
 
+    gameModeBadge.textContent = `Online vs ${targetName}`;
     listenToMatch(currentMatchId);
 }
 
 let activeChallengeData = null;
+const challengeActionButtons = document.getElementById('challengeActionButtons');
+
 function showIncomingChallenge(data) {
     activeChallengeData = data;
     currentMatchId = data.matchId;
     challengeTitle.textContent = `Challenge from ${data.fromName}!`;
-    challengeText.textContent = `${data.fromName} wants to play with you.`;
+    challengeText.textContent = `${data.fromName} wants to play with you in the Arena.`;
+    challengeActionButtons.style.display = 'flex';
     challengeModal.style.display = 'flex';
 }
 
@@ -334,10 +355,26 @@ acceptChallengeBtn.onclick = () => {
     myRole = 'O';
     gameModeBadge.textContent = `Online vs ${activeChallengeData.fromName}`;
     
+    const initialBoardStates = Array(9).fill().map(() => Array(9).fill(''));
+    const initialBoardWins = Array(9).fill(null);
+
     const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
-    window.dbUpdate(matchRef, {
+    window.dbSet(matchRef, {
+        boardStates: initialBoardStates,
+        boardWins: initialBoardWins,
+        activeBoardIndex: null,
+        currentPlayer: 'X',
         status: 'playing'
     });
+
+    window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId));
+
+    boardStates = initialBoardStates;
+    boardWins = initialBoardWins;
+    activeBoardIndex = null;
+    currentPlayer = 'X';
+    renderBoard();
+    updateStatus();
 
     listenToMatch(currentMatchId);
 };
@@ -350,6 +387,17 @@ rejectChallengeBtn.onclick = () => {
     }
 };
 
+function sanitizeArray(arr, defaultVal) {
+    if (!arr) return defaultVal;
+    if (Array.isArray(arr)) {
+        return arr.map(item => Array.isArray(item) ? [...item] : (typeof item === 'object' && item !== null ? Object.values(item) : item));
+    }
+    if (typeof arr === 'object') {
+        return Object.values(arr).map(item => Array.isArray(item) ? [...item] : (typeof item === 'object' && item !== null ? Object.values(item) : item));
+    }
+    return defaultVal;
+}
+
 function listenToMatch(matchId) {
     if (activeMatchUnsubscribe) {
         activeMatchUnsubscribe();
@@ -358,9 +406,9 @@ function listenToMatch(matchId) {
     activeMatchUnsubscribe = window.dbOnValue(matchRef, (snapshot) => {
         const data = snapshot.val();
         if (data) {
-            boardStates = data.boardStates || Array(9).fill().map(() => Array(9).fill(''));
-            boardWins = data.boardWins || Array(9).fill(null);
-            activeBoardIndex = data.activeBoardIndex;
+            boardStates = sanitizeArray(data.boardStates, Array(9).fill().map(() => Array(9).fill('')));
+            boardWins = sanitizeArray(data.boardWins, Array(9).fill(null));
+            activeBoardIndex = data.activeBoardIndex !== undefined ? data.activeBoardIndex : null;
             currentPlayer = data.currentPlayer || 'X';
             
             if (data.status === 'playing') {
@@ -369,9 +417,9 @@ function listenToMatch(matchId) {
                 challengeModal.style.display = 'none';
                 aiDifficultyModal.style.display = 'none';
                 gameMode = 'online-p2p';
+                renderBoard();
+                updateStatus();
             }
-            renderBoard();
-            updateStatus();
         }
     });
 }
@@ -428,9 +476,9 @@ function renderBoard() {
         for (let c = 0; c < 9; c++) {
             const cellBtn = document.createElement('button');
             cellBtn.className = 'cell-btn aspect-square rounded-md font-bold text-lg md:text-xl flex items-center justify-center transition-all';
-            cellBtn.textContent = boardStates[b][c];
+            cellBtn.textContent = boardStates[b] && boardStates[b][c] ? boardStates[b][c] : '';
 
-            if (boardStates[b][c] !== '' || !isBoardActive || boardWins[b]) {
+            if ((boardStates[b] && boardStates[b][c] !== '') || !isBoardActive || boardWins[b]) {
                 cellBtn.disabled = true;
             } else {
                 cellBtn.addEventListener('click', () => {
@@ -446,6 +494,7 @@ function renderBoard() {
 
 function handleCellClick(bIndex, cIndex) {
     if (gameMode === 'online-p2p' && currentPlayer !== myRole) return;
+    if (!boardStates[bIndex] || boardStates[bIndex][cIndex] !== '' || boardWins[bIndex] !== null) return;
 
     boardStates[bIndex][cIndex] = currentPlayer;
 
@@ -500,6 +549,7 @@ function makeAiMove() {
 }
 
 function checkSmallWin(cells) {
+    if (!cells) return false;
     const wins = [[0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6]];
     return wins.some(([x,y,z]) => cells[x] && cells[x] === cells[y] && cells[x] === cells[z]);
 }

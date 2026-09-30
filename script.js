@@ -121,7 +121,7 @@ let activeBoardIndex = null;
 let boardWins = Array(9).fill(null); 
 let boardStates = Array(9).fill().map(() => Array(9).fill(''));
 
-let playerName = localStorage.getItem('ultimate_player_name'] || '';
+let playerName = localStorage.getItem('ultimate_player_name') || '';
 let playerId = localStorage.getItem('ultimate_player_id') || 'p_' + Math.random().toString(36).substring(2, 9);
 localStorage.setItem('ultimate_player_id', playerId);
 
@@ -213,6 +213,14 @@ saveNameBtn.addEventListener('click', () => {
     }
 });
 
+function whenFirebaseReady(callback) {
+    if (window.db) {
+        callback();
+        return;
+    }
+    window.addEventListener('firebase-ready', callback, { once: true });
+}
+
 function registerOnlinePresence() {
     if (!window.db) return;
     const userRef = window.dbRef(window.db, 'players/' + playerId);
@@ -270,31 +278,33 @@ closeOnlineLobbyBtn.addEventListener('click', () => {
 });
 
 function fetchOnlinePlayers() {
-    if (!window.db) return;
-    const playersRef = window.dbRef(window.db, 'players');
-    window.dbOnValue(playersRef, (snapshot) => {
-        const players = snapshot.val();
-        onlinePlayersList.innerHTML = '';
-        if (!players) {
-            onlinePlayersList.innerHTML = '<p class="text-xs text-center opacity-50 py-4">No players online.</p>';
-            return;
-        }
+    whenFirebaseReady(() => {
+        if (!window.db) return;
+        const playersRef = window.dbRef(window.db, 'players');
+        window.dbOnValue(playersRef, (snapshot) => {
+            const players = snapshot.val();
+            onlinePlayersList.innerHTML = '';
+            if (!players) {
+                onlinePlayersList.innerHTML = '<p class="text-xs text-center opacity-50 py-4">No players online.</p>';
+                return;
+            }
 
-        let count = 0;
-        Object.keys(players).forEach(id => {
-            if (id === playerId) return;
-            count++;
-            let p = players[id];
-            let div = document.createElement('div');
-            div.className = 'sub-box p-2.5 rounded-xl border flex justify-between items-center text-xs font-bold';
-            div.innerHTML = `<span>🟢 ${p.name}</span> <button class="action-btn px-3 py-1 rounded-lg text-xs">Challenge</button>`;
-            div.querySelector('button').addEventListener('click', () => sendChallenge(id, p.name));
-            onlinePlayersList.appendChild(div);
+            let count = 0;
+            Object.keys(players).forEach(id => {
+                if (id === playerId) return;
+                count++;
+                let p = players[id];
+                let div = document.createElement('div');
+                div.className = 'sub-box p-2.5 rounded-xl border flex justify-between items-center text-xs font-bold';
+                div.innerHTML = `<span>🟢 ${p.name}</span> <button class="action-btn px-3 py-1 rounded-lg text-xs">Challenge</button>`;
+                div.querySelector('button').addEventListener('click', () => sendChallenge(id, p.name));
+                onlinePlayersList.appendChild(div);
+            });
+
+            if (count === 0) {
+                onlinePlayersList.innerHTML = '<p class="text-xs text-center opacity-50 py-4">No other players online. Open another browser/device!</p>';
+            }
         });
-
-        if (count === 0) {
-            onlinePlayersList.innerHTML = '<p class="text-xs text-center opacity-50 py-4">No other players online. Open another browser/device!</p>';
-        }
     });
 }
 
@@ -387,15 +397,33 @@ rejectChallengeBtn.onclick = () => {
     }
 };
 
-function sanitizeArray(arr, defaultVal) {
-    if (!arr) return defaultVal;
-    if (Array.isArray(arr)) {
-        return arr.map(item => Array.isArray(item) ? [...item] : (typeof item === 'object' && item !== null ? Object.values(item) : item));
+function padBoardRow(row) {
+    const cells = Array.isArray(row)
+        ? row
+        : (row && typeof row === 'object' ? Object.values(row) : []);
+    const padded = [];
+    for (let i = 0; i < 9; i++) {
+        padded[i] = cells[i] == null ? '' : cells[i];
     }
-    if (typeof arr === 'object') {
-        return Object.values(arr).map(item => Array.isArray(item) ? [...item] : (typeof item === 'object' && item !== null ? Object.values(item) : item));
+    return padded;
+}
+
+function sanitizeBoardStates(arr) {
+    const source = !arr ? [] : (Array.isArray(arr) ? arr : Object.values(arr));
+    const boards = [];
+    for (let b = 0; b < 9; b++) {
+        boards[b] = padBoardRow(source[b]);
     }
-    return defaultVal;
+    return boards;
+}
+
+function sanitizeBoardWins(arr) {
+    const source = !arr ? [] : (Array.isArray(arr) ? arr : Object.values(arr));
+    const wins = [];
+    for (let b = 0; b < 9; b++) {
+        wins[b] = source[b] == null ? null : source[b];
+    }
+    return wins;
 }
 
 function listenToMatch(matchId) {
@@ -406,8 +434,8 @@ function listenToMatch(matchId) {
     activeMatchUnsubscribe = window.dbOnValue(matchRef, (snapshot) => {
         const data = snapshot.val();
         if (data) {
-            boardStates = sanitizeArray(data.boardStates, Array(9).fill().map(() => Array(9).fill('')));
-            boardWins = sanitizeArray(data.boardWins, Array(9).fill(null));
+            boardStates = sanitizeBoardStates(data.boardStates);
+            boardWins = sanitizeBoardWins(data.boardWins);
             activeBoardIndex = data.activeBoardIndex !== undefined ? data.activeBoardIndex : null;
             currentPlayer = data.currentPlayer || 'X';
             
@@ -504,13 +532,11 @@ function handleCellClick(bIndex, cIndex) {
         boardWins[bIndex] = 'DRAW';
     }
 
-    if (checkUltimateWin()) {
-        handleMatchEnd(currentPlayer);
-        return;
+    const matchWon = checkUltimateWin();
+    if (!matchWon) {
+        activeBoardIndex = (boardWins[cIndex] !== null) ? null : cIndex;
+        currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
     }
-
-    activeBoardIndex = (boardWins[cIndex] !== null) ? null : cIndex;
-    currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
 
     if (gameMode === 'online-p2p' && currentMatchId) {
         const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
@@ -518,8 +544,14 @@ function handleCellClick(bIndex, cIndex) {
             boardStates: boardStates,
             boardWins: boardWins,
             activeBoardIndex: activeBoardIndex,
-            currentPlayer: currentPlayer
+            currentPlayer: currentPlayer,
+            status: matchWon ? 'finished' : 'playing'
         });
+    }
+
+    if (matchWon) {
+        handleMatchEnd(currentPlayer);
+        return;
     }
 
     renderBoard();
@@ -591,5 +623,5 @@ function updateStatus() {
 }
 
 resetBtn.addEventListener('click', () => { playSound('click'); initGame(); });
-checkPlayerName();
+whenFirebaseReady(checkPlayerName);
 initGame();

@@ -30,6 +30,7 @@
       window.dbUpdate = update;
       window.dbRemove = remove;
       window.dbOnDisconnect = onDisconnect;
+      window.dispatchEvent(new Event('firebase-ready'));
     </script>
 </head>
 <body class="min-h-screen flex flex-col items-center justify-between p-4 selection:bg-cyan-500 selection:text-white">

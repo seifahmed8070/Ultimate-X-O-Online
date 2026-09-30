@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en" id="htmlRoot" class="theme-cyberpunk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultimate Tic-Tac-Toe | Online Arena</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+    <!-- مكتبات Firebase للويب -->
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+      import { getDatabase, ref, set, onValue, update, remove } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+      
+      const firebaseConfig = {
+        apiKey: "AIzaSyAQLsvV-6roMQOlGkgXPfyC182O4MN6Xgc",
+        authDomain: "ultimate-xo-game.firebaseapp.com",
+        databaseURL: "https://ultimate-xo-game-default-rtdb.firebaseio.com",
+        projectId: "ultimate-xo-game",
+        storageBucket: "ultimate-xo-game.firebasestorage.app",
+        messagingSenderId: "812115160959",
+        appId: "1:812115160959:web:02f9639b4f346b3293744a",
+        measurementId: "G-KMGLHNH5MQ"
+      };
+
+      const app = initializeApp(firebaseConfig);
+      window.db = getDatabase(app);
+      window.dbRef = ref;
+      window.dbSet = set;
+      window.dbOnValue = onValue;
+      window.dbUpdate = update;
+      window.dbRemove = remove;
+    </script>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-between p-4 selection:bg-cyan-500 selection:text-white">
+
+    <!-- نافذة إدخال الاسم لأول مرة -->
+    <div id="nameModal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-md">
+        <div class="modal-box border-2 p-6 rounded-2xl max-w-sm w-full text-center shadow-2xl">
+            <h2 class="modal-title font-black text-xl mb-3 tracking-wider">Welcome Player!</h2>
+            <p class="text-xs mb-4 opacity-80">Enter your name to join the online arena:</p>
+            <input type="text" id="playerNameInput" placeholder="Your Name (e.g. Saif)" class="w-full input-field px-4 py-2.5 rounded-xl text-center mb-4 focus:outline-none font-bold">
+            <button id="saveNameBtn" class="w-full action-btn font-bold py-2.5 rounded-xl shadow-lg transition-all text-sm uppercase tracking-wide">
+                Enter Arena
+            </button>
+        </div>
+    </div>
+
+    <!-- نافذة اختيار مستوى البوت -->
+    <div id="aiDifficultyModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
+        <div class="modal-box border-2 p-6 rounded-2xl max-w-sm w-full text-center shadow-2xl flex flex-col gap-3">
+            <h2 class="modal-title font-black text-lg mb-1">Select AI Difficulty</h2>
+            <button data-level="easy" class="ai-diff-btn w-full sub-box border font-bold py-2.5 rounded-xl text-sm transition-all hover:border-emerald-400">🟢 Easy</button>
+            <button data-level="medium" class="ai-diff-btn w-full sub-box border font-bold py-2.5 rounded-xl text-sm transition-all hover:border-cyan-400">🟡 Medium</button>
+            <button data-level="impossible" class="ai-diff-btn w-full action-btn font-bold py-2.5 rounded-xl text-sm transition-all">🔴 Grandmaster AI (Impossible)</button>
+            <button id="cancelAiModalBtn" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 rounded-xl text-xs mt-2">Cancel</button>
+        </div>
+    </div>
+
+    <!-- نافذة قائمة الأونلاين وساحة اللاعبين -->
+    <div id="onlineLobbyModal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
+        <div class="modal-box border-2 p-6 rounded-2xl max-w-md w-full text-center shadow-2xl flex flex-col gap-3 max-h-[85vh] overflow-y-auto">
+            <h2 class="font-black text-lg brand-title uppercase">🌐 Live Online Arena</h2>
+            <p class="text-xs opacity-80">Players online right now. Click any player to challenge them!</p>
+            
+            <div id="onlinePlayersList" class="flex flex-col gap-2 my-2 text-left max-h-48 overflow-y-auto p-2 sub-box border rounded-xl">
+                <p class="text-xs text-center opacity-50 py-4">Searching for online players...</p>
+            </div>
+
+            <button id="closeOnlineLobbyBtn" class="w-full bg-rose-600/80 hover:bg-rose-600 text-white font-bold py-2.5 rounded-xl text-xs">
+                Back to Menu
+            </button>
+        </div>
+    </div>
+
+    <!-- نافذة انتظار أو استقبال التحدي -->
+    <div id="challengeModal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
+        <div class="modal-box border-2 p-6 rounded-2xl max-w-sm w-full text-center shadow-2xl flex flex-col gap-4">
+            <h2 id="challengeTitle" class="font-black text-lg brand-title">Incoming Challenge!</h2>
+            <p id="challengeText" class="text-xs opacity-90">Player X has challenged you to a match.</p>
+            <div id="challengeActionButtons" class="flex gap-2">
+                <button id="acceptChallengeBtn" class="w-full action-btn font-bold py-2.5 rounded-xl text-xs">Accept</button>
+                <button id="rejectChallengeBtn" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl text-xs">Decline</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- شاشة القائمة الرئيسية -->
+    <div id="mainMenu" class="fixed inset-0 bg-black/70 z-40 flex items-center justify-center p-4 backdrop-blur-md">
+        <div class="modal-box border-2 p-6 rounded-2xl max-w-sm w-full text-center shadow-2xl flex flex-col gap-3">
+            <h1 class="text-2xl font-black brand-title tracking-wider uppercase mb-1">Ultimate X/O</h1>
+            <p class="text-xs opacity-80 mb-2">Welcome, <span id="menuUsername" class="font-bold">Player</span>! | Points: <span id="userPoints" class="text-emerald-400 font-bold">10</span></p>
+            
+            <button id="onlineLobbyMenuBtn" class="w-full action-btn font-bold py-3 rounded-xl shadow-lg transition-all text-sm uppercase tracking-wide bg-gradient-to-r from-emerald-600 to-teal-600">
+                🌐 Online Live Arena (Play vs Players)
+            </button>
+            <button id="pveMenuBtn" class="w-full action-btn font-bold py-3 rounded-xl shadow-lg transition-all text-sm uppercase tracking-wide bg-gradient-to-r from-purple-600 to-indigo-600">
+                🤖 Play vs AI Bot
+            </button>
+            <button id="statsMenuBtn" class="w-full sub-box border font-bold py-2.5 rounded-xl shadow transition-all text-sm">
+                📊 Stats & Arena Leaderboard
+            </button>
+            <button id="menuRulesBtn" class="w-full sub-box border font-bold py-2.5 rounded-xl shadow transition-all text-sm">
+                📜 Game Rules
+            </button>
+        </div>
+    </div>
+
+    <!-- نافذة الإحصائيات -->
+    <div id="statsModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
+        <div class="modal-box border-2 p-6 rounded-2xl max-w-md w-full text-center shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h2 class="font-bold text-lg mb-3 brand-title">Player Profile & Arena Points</h2>
+            <div class="flex flex-col gap-2 text-xs mb-4 text-right">
+                <div class="flex justify-between sub-box p-2.5 rounded-xl border">
+                    <span>Total Arena Points:</span> <span id="statPoints" class="font-bold text-emerald-400 text-sm">0</span>
+                </div>
+                <div class="flex justify-between sub-box p-2.5 rounded-xl border">
+                    <span>Total Matches:</span> <span id="statTotal" class="font-bold">0</span>
+                </div>
+            </div>
+            <button id="closeStatsBtn" class="w-full action-btn font-bold py-2.5 rounded-xl text-sm">Back to Menu</button>
+        </div>
+    </div>
+
+    <header class="text-center my-2 w-full max-w-lg flex justify-between items-center px-2">
+        <div>
+            <h1 class="text-xl md:text-2xl font-black brand-title tracking-wider uppercase text-right cursor-pointer" id="backToMenuHeader">
+                Ultimate X/O
+            </h1>
+            <p class="text-xs text-right mt-0.5 opacity-70"><span id="gameModeBadge" class="font-bold text-cyan-400">Offline Mode</span></p>
+        </div>
+        <div class="flex items-center gap-2">
+            <button id="homeBtn" class="theme-select text-xs font-bold px-2.5 py-2 rounded-xl shadow-md transition-all cursor-pointer">
+                🏠 Menu
+            </button>
+            <select id="themeSelector" class="theme-select text-xs font-bold px-2.5 py-2 rounded-xl shadow-md transition-all cursor-pointer focus:outline-none">
+                <option value="theme-cyberpunk">⚡ Cyberpunk</option>
+                <option value="theme-matrix">🟢 Matrix</option>
+                <option value="theme-obsidian">🖤 Obsidian</option>
+                <option value="theme-vaporwave">🌆 Vaporwave</option>
+            </select>
+        </div>
+    </header>
+
+    <div class="w-full max-w-lg control-panel border p-3 rounded-2xl shadow-xl flex flex-col gap-3 mb-4">
+        <div class="flex flex-wrap justify-between items-center gap-2">
+            <div class="text-sm font-bold sub-box px-3 py-1.5 rounded-xl border">
+                Turn: <span id="turnIndicator" class="font-extrabold text-lg">X</span>
+            </div>
+            <div class="text-sm font-bold sub-box px-3 py-1.5 rounded-xl border">
+                Score: <span class="score-x" id="scoreX">0</span> - <span class="score-o" id="scoreO">0</span>
+            </div>
+            <button id="resetBtn" class="action-btn text-white font-bold px-3 py-1.5 rounded-xl shadow-lg transition-all text-xs">
+                Restart
+            </button>
+        </div>
+    </div>
+
+    <main id="mainBoardContainer" class="w-full max-w-lg main-board-wrapper p-3 md:p-4 rounded-2xl border-2 shadow-2xl relative">
+        <div id="ultimateBoard" class="ultimate-grid"></div>
+    </main>
+
+    <!-- نوافذ إضافية -->
+    <div id="victoryModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
+        <div class="modal-box border-2 p-6 rounded-2xl max-w-sm w-full text-center shadow-2xl">
+            <div id="victoryIcon" class="text-4xl mb-2">🎉</div>
+            <h2 id="victoryTitle" class="font-black text-xl mb-2 tracking-wider text-emerald-400">VICTORY!</h2>
+            <p id="victoryText" class="text-sm mb-6 font-semibold opacity-90">Player wins!</p>
+            <button id="nextRoundBtn" class="w-full action-btn font-bold py-2.5 rounded-xl shadow-lg transition-all text-xs uppercase tracking-wide">
+                Play Again
+            </button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

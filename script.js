@@ -1,28 +1,52 @@
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-function playSound(type) {
-    if (audioCtx.state === 'suspended') { audioCtx.resume(); }
-    const osc = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-    osc.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-    if (type === 'click') {
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(400, audioCtx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.08);
-        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.08);
-    } else if (type === 'win') {
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(300, audioCtx.currentTime);
-        osc.frequency.setValueAtTime(500, audioCtx.currentTime + 0.1);
-        osc.frequency.setValueAtTime(700, audioCtx.currentTime + 0.2);
-        gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.4);
+let audioCtx = null;
+function getAudioCtx() {
+    const AudioAPI = window.AudioContext || window.webkitAudioContext;
+    if (!AudioAPI) return null;
+    if (!audioCtx) {
+        try { audioCtx = new AudioAPI(); } catch (e) { return null; }
     }
+    return audioCtx;
+}
+function playSound(type) {
+    try {
+        const ctx = getAudioCtx();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') { ctx.resume(); }
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        if (type === 'click') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(400, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.08);
+            gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.08);
+        } else if (type === 'win') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(300, ctx.currentTime);
+            osc.frequency.setValueAtTime(500, ctx.currentTime + 0.1);
+            osc.frequency.setValueAtTime(700, ctx.currentTime + 0.2);
+            gainNode.gain.setValueAtTime(0.2, ctx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.4);
+        }
+    } catch (e) {}
+}
+
+function storageGet(key, fallback) {
+    try {
+        const value = localStorage.getItem(key);
+        return value === null ? fallback : value;
+    } catch (e) {
+        return fallback;
+    }
+}
+function storageSet(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) {}
 }
 
 const ultimateBoard = document.getElementById('ultimateBoard');
@@ -121,14 +145,17 @@ let activeBoardIndex = null;
 let boardWins = Array(9).fill(null); 
 let boardStates = Array(9).fill().map(() => Array(9).fill(''));
 
-let playerName = localStorage.getItem('ultimate_player_name') || '';
-let playerId = localStorage.getItem('ultimate_player_id') || 'p_' + Math.random().toString(36).substring(2, 9);
-localStorage.setItem('ultimate_player_id', playerId);
+let playerName = storageGet('ultimate_player_name', '');
+let playerId = storageGet('ultimate_player_id', '') || ('p_' + Math.random().toString(36).substring(2, 9));
+storageSet('ultimate_player_id', playerId);
 
-let userArenaPoints = parseInt(localStorage.getItem('ultimate_points')) || 10;
-let stats = JSON.parse(localStorage.getItem('ultimate_stats')) || { total: 0, wins: 0, losses: 0 };
+let userArenaPoints = parseInt(storageGet('ultimate_points', '10'), 10) || 10;
+let stats = { total: 0, wins: 0, losses: 0 };
+try {
+    stats = JSON.parse(storageGet('ultimate_stats', '{"total":0,"wins":0,"losses":0}')) || stats;
+} catch (e) {}
 let scores = { X: 0, O: 0 };
-let currentTheme = localStorage.getItem('ultimate_theme') || 'theme-cyberpunk';
+let currentTheme = storageGet('ultimate_theme', 'theme-cyberpunk') || 'theme-cyberpunk';
 
 let currentMatchId = null;
 let myRole = 'X';
@@ -142,7 +169,7 @@ themeSelector.addEventListener('change', (e) => {
     playSound('click');
     currentTheme = e.target.value;
     htmlRoot.className = currentTheme;
-    localStorage.setItem('ultimate_theme', currentTheme);
+    storageSet('ultimate_theme', currentTheme);
 });
 
 function createRulesModal() {
@@ -184,32 +211,13 @@ if (closeStatsBtn) {
 }
 
 function checkPlayerName() {
-    if (!localStorage.getItem('ultimate_player_name')) {
+    const savedName = storageGet('ultimate_player_name', '');
+    if (!savedName) {
         nameModal.style.display = 'flex';
         mainMenu.style.display = 'flex';
-    } else {
-        playerName = localStorage.getItem('ultimate_player_name');
-        nameModal.style.display = 'none';
-        mainMenu.style.display = 'flex';
-        menuUsername.textContent = playerName;
-        userPoints.textContent = userArenaPoints;
-        registerOnlinePresence();
-    }
-}
-
-function submitPlayerName(event) {
-    if (event) event.preventDefault();
-    try { playSound('click'); } catch (e) {}
-
-    const name = playerNameInput.value.trim();
-    if (!name) {
-        alert('Please enter your name!');
-        playerNameInput.focus();
         return;
     }
-
-    playerName = name;
-    localStorage.setItem('ultimate_player_name', playerName);
+    playerName = savedName;
     nameModal.style.display = 'none';
     mainMenu.style.display = 'flex';
     menuUsername.textContent = playerName;
@@ -217,15 +225,44 @@ function submitPlayerName(event) {
     whenFirebaseReady(registerOnlinePresence);
 }
 
+let isSubmittingName = false;
+function submitPlayerName(event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    if (isSubmittingName) return false;
+    isSubmittingName = true;
+
+    playerNameInput.blur();
+    const name = playerNameInput.value.trim();
+    if (!name) {
+        isSubmittingName = false;
+        playerNameInput.focus();
+        return false;
+    }
+
+    playSound('click');
+    playerName = name;
+    storageSet('ultimate_player_name', playerName);
+    nameModal.style.display = 'none';
+    mainMenu.style.display = 'flex';
+    menuUsername.textContent = playerName;
+    userPoints.textContent = userArenaPoints;
+    whenFirebaseReady(registerOnlinePresence);
+    return false;
+}
+
 const nameForm = document.getElementById('nameForm');
 if (nameForm) {
     nameForm.addEventListener('submit', submitPlayerName);
-} else if (saveNameBtn) {
+}
+if (saveNameBtn) {
     saveNameBtn.addEventListener('click', submitPlayerName);
 }
-
 playerNameInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
+        event.preventDefault();
         submitPlayerName(event);
     }
 });
@@ -623,8 +660,8 @@ function handleMatchEnd(winner) {
         userArenaPoints = Math.max(0, userArenaPoints - 1); 
     }
     
-    localStorage.setItem('ultimate_points', userArenaPoints);
-    localStorage.setItem('ultimate_stats', JSON.stringify(stats));
+    storageSet('ultimate_points', String(userArenaPoints));
+    storageSet('ultimate_stats', JSON.stringify(stats));
     
     if (window.db) {
         window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { points: userArenaPoints });
@@ -640,5 +677,5 @@ function updateStatus() {
 }
 
 resetBtn.addEventListener('click', () => { playSound('click'); initGame(); });
-whenFirebaseReady(checkPlayerName);
+checkPlayerName();
 initGame();

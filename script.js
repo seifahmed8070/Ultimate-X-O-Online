@@ -66,7 +66,6 @@ const closeStatsBtn = document.getElementById('closeStatsBtn');
 const statPoints = document.getElementById('statPoints');
 const statTotal = document.getElementById('statTotal');
 
-// إضافة عنصر جدول الترتيب الكلي برمجياً داخل نافذة الإحصائيات لو مش موجود
 let leaderboardList = document.getElementById('leaderboardList');
 if (!leaderboardList && statsModal) {
     let lbContainer = document.createElement('div');
@@ -203,7 +202,6 @@ function registerOnlinePresence() {
     });
 }
 
-// جلب وترتيب أفضل اللاعبين عالمياً من Firebase
 function fetchGlobalLeaderboard() {
     if (!window.db) return;
     const playersRef = window.dbRef(window.db, 'players');
@@ -259,21 +257,42 @@ function fetchOnlinePlayers() {
 
 function sendChallenge(targetId, targetName) {
     playSound('click');
-    alert(`Challenge sent to ${targetName}!`);
     myRole = 'X';
-    currentMatchId = playerId + '_' + targetId;
+    currentMatchId = playerId < targetId ? playerId + '_' + targetId : targetId + '_' + playerId;
     
-    const challengeRef = window.dbRef(window.db, 'challenges/' + targetId);
-    window.dbSet(challengeRef, { fromId: playerId, fromName: playerName, matchId: currentMatchId, status: 'pending' });
-
     const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
+    window.dbSet(matchRef, {
+        boardStates: Array(9).fill().map(() => Array(9).fill('')),
+        boardWins: Array(9).fill(null),
+        activeBoardIndex: null,
+        currentPlayer: 'X',
+        status: 'waiting'
+    });
+
+    const challengeRef = window.dbRef(window.db, 'challenges/' + targetId);
+    window.dbSet(challengeRef, { 
+        fromId: playerId, 
+        fromName: playerName, 
+        matchId: currentMatchId, 
+        status: 'pending' 
+    });
+
+    alert(`Challenge sent to ${targetName}! Waiting for response...`);
+
     window.dbOnValue(matchRef, (snapshot) => {
         const matchData = snapshot.val();
-        if (matchData && mainMenu.style.display !== 'none') {
-            mainMenu.style.display = 'none';
-            gameMode = 'online-p2p';
-            gameModeBadge.textContent = `Online vs ${targetName}`;
-            listenToMatch(currentMatchId);
+        if (matchData && matchData.status === 'playing') {
+            if (mainMenu.style.display !== 'none') {
+                mainMenu.style.display = 'none';
+                gameMode = 'online-p2p';
+                gameModeBadge.textContent = `Online vs ${targetName}`;
+            }
+            boardStates = matchData.boardStates;
+            boardWins = matchData.boardWins;
+            activeBoardIndex = matchData.activeBoardIndex;
+            currentPlayer = matchData.currentPlayer;
+            renderBoard();
+            updateStatus();
         }
     });
 }
@@ -298,11 +317,7 @@ acceptChallengeBtn.onclick = () => {
     gameModeBadge.textContent = `Online vs ${activeChallengeData.fromName}`;
     
     const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
-    window.dbSet(matchRef, {
-        boardStates: Array(9).fill().map(() => Array(9).fill('')),
-        boardWins: Array(9).fill(null),
-        activeBoardIndex: null,
-        currentPlayer: 'X',
+    window.dbUpdate(matchRef, {
         status: 'playing'
     });
 
@@ -349,7 +364,7 @@ document.querySelectorAll('.ai-diff-btn').forEach(btn => {
 
 homeBtn.addEventListener('click', () => { 
     playSound('click'); 
-    mainMenu.style.display = 'flex'; // العودة للقائمة الرئيسية
+    mainMenu.style.display = 'flex'; 
 });
 
 function initGame() {
@@ -457,12 +472,14 @@ function makeAiMove() {
 
 function checkSmallWin(cells) {
     const wins = [[0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6]];
-    return wins.some(([x,y,z]) => cells[x] && cells[x] === cells[y] && cells[x] === cells[z]);
+    const hasWon = wins.some(([x,y,z]) => cells[x] && cells[x] === cells[y] && cells[x] === cells[z]);
+    return hasWon;
 }
 
 function checkUltimateWin() {
     const wins = [[0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6]];
-    return wins.some(([x,y,z]) => boardWins[x] && boardWins[x] !== 'DRAW' && boardWins[x] === boardWins[y] && boardWins[x] === boardWins[z]);
+    const hasWon = wins.some(([x,y,z]) => boardWins[x] && boardWins[x] !== 'DRAW' && boardWins[x] === boardWins[y] && boardWins[x] === boardWins[z]);
+    return hasWon;
 }
 
 function handleMatchEnd(winner) {
@@ -483,7 +500,6 @@ function handleMatchEnd(winner) {
     localStorage.setItem('ultimate_points', userArenaPoints);
     localStorage.setItem('ultimate_stats', JSON.stringify(stats));
     
-    // تحديث النقاط مباشرة في قاعدة البيانات للترتيب العالمي
     if (window.db) {
         window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { points: userArenaPoints });
     }

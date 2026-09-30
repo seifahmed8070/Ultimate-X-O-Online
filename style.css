@@ -105,3 +105,21 @@
 .shake-effect {
     animation: shake 0.4s ease-in-out;
 }
+
+.board-my-turn {
+    border-color: #22c55e !important;
+    box-shadow: 0 0 28px rgba(34, 197, 94, 0.45);
+}
+.board-locked {
+    opacity: 0.78;
+    filter: grayscale(0.15);
+}
+.my-turn-local {
+    border-color: #22c55e !important;
+    background-color: rgba(34, 197, 94, 0.12) !important;
+    box-shadow: 0 0 16px rgba(34, 197, 94, 0.55);
+}
+.waiting-local {
+    border-color: #64748b !important;
+    box-shadow: 0 0 8px rgba(100, 116, 139, 0.35);
+}

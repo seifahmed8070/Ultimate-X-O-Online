@@ -451,33 +451,63 @@ rejectChallengeBtn.onclick = () => {
     }
 };
 
-function padBoardRow(row) {
-    const cells = Array.isArray(row)
-        ? row
-        : (row && typeof row === 'object' ? Object.values(row) : []);
-    const padded = [];
+function readIndexed9(source, emptyVal) {
+    const out = [];
     for (let i = 0; i < 9; i++) {
-        padded[i] = cells[i] == null ? '' : cells[i];
+        let value;
+        if (source == null) {
+            value = emptyVal;
+        } else if (Array.isArray(source)) {
+            value = source[i];
+        } else {
+            value = source[i] !== undefined ? source[i] : source[String(i)];
+        }
+        out[i] = (value === undefined || value === null || value === '') ? emptyVal : value;
     }
-    return padded;
+    return out;
 }
 
 function sanitizeBoardStates(arr) {
-    const source = !arr ? [] : (Array.isArray(arr) ? arr : Object.values(arr));
     const boards = [];
     for (let b = 0; b < 9; b++) {
-        boards[b] = padBoardRow(source[b]);
+        let row;
+        if (arr == null) {
+            row = null;
+        } else if (Array.isArray(arr)) {
+            row = arr[b];
+        } else {
+            row = arr[b] !== undefined ? arr[b] : arr[String(b)];
+        }
+        boards[b] = readIndexed9(row, '').map((value) => (value === '-' ? '' : value));
     }
     return boards;
 }
 
 function sanitizeBoardWins(arr) {
-    const source = !arr ? [] : (Array.isArray(arr) ? arr : Object.values(arr));
-    const wins = [];
+    return readIndexed9(arr, null).map((value) => (value === '-' ? null : value));
+}
+
+function serializeBoardStates(states) {
+    const packed = {};
     for (let b = 0; b < 9; b++) {
-        wins[b] = source[b] == null ? null : source[b];
+        packed[b] = {};
+        for (let c = 0; c < 9; c++) {
+            packed[b][c] = states[b][c] || '-';
+        }
     }
-    return wins;
+    return packed;
+}
+
+function serializeBoardWins(wins) {
+    const packed = {};
+    for (let b = 0; b < 9; b++) {
+        packed[b] = wins[b] || '-';
+    }
+    return packed;
+}
+
+function isMyOnlineTurn() {
+    return gameMode !== 'online-p2p' || currentPlayer === myRole;
 }
 
 function listenToMatch(matchId) {
@@ -490,10 +520,14 @@ function listenToMatch(matchId) {
         if (data) {
             boardStates = sanitizeBoardStates(data.boardStates);
             boardWins = sanitizeBoardWins(data.boardWins);
-            activeBoardIndex = data.activeBoardIndex !== undefined ? data.activeBoardIndex : null;
+            if (data.activeBoardIndex === undefined || data.activeBoardIndex === null || data.activeBoardIndex === -1) {
+                activeBoardIndex = null;
+            } else {
+                activeBoardIndex = Number(data.activeBoardIndex);
+            }
             currentPlayer = data.currentPlayer || 'X';
             
-            if (data.status === 'playing') {
+            if (data.status === 'playing' || data.status === 'finished') {
                 mainMenu.style.display = 'none';
                 onlineLobbyModal.style.display = 'none';
                 challengeModal.style.display = 'none';
@@ -538,6 +572,12 @@ function initGame() {
 
 function renderBoard() {
     ultimateBoard.innerHTML = '';
+    const myTurn = isMyOnlineTurn();
+    if (mainBoardContainer) {
+        mainBoardContainer.classList.toggle('board-my-turn', myTurn);
+        mainBoardContainer.classList.toggle('board-locked', !myTurn);
+    }
+
     for (let b = 0; b < 9; b++) {
         const localBoardDiv = document.createElement('div');
         localBoardDiv.className = 'local-grid local-board-bg p-2 rounded-xl border-2 transition-all relative overflow-hidden';
@@ -549,8 +589,10 @@ function renderBoard() {
             overlay.className = 'absolute inset-0 overlay-bg flex items-center justify-center font-black text-5xl z-10';
             overlay.textContent = boardWins[b];
             localBoardDiv.appendChild(overlay);
-        } else if (isBoardActive) {
-            localBoardDiv.className += ' active-local-board shadow-[0_0_15px_rgba(59,130,246,0.3)]';
+        } else if (isBoardActive && myTurn) {
+            localBoardDiv.className += ' my-turn-local';
+        } else if (isBoardActive && !myTurn) {
+            localBoardDiv.className += ' waiting-local';
         } else {
             localBoardDiv.className += ' opacity-40';
         }
@@ -558,9 +600,11 @@ function renderBoard() {
         for (let c = 0; c < 9; c++) {
             const cellBtn = document.createElement('button');
             cellBtn.className = 'cell-btn aspect-square rounded-md font-bold text-lg md:text-xl flex items-center justify-center transition-all';
-            cellBtn.textContent = boardStates[b] && boardStates[b][c] ? boardStates[b][c] : '';
+            const mark = boardStates[b] && boardStates[b][c] && boardStates[b][c] !== '-' ? boardStates[b][c] : '';
+            cellBtn.textContent = mark;
 
-            if ((boardStates[b] && boardStates[b][c] !== '') || !isBoardActive || boardWins[b]) {
+            const occupied = mark !== '';
+            if (occupied || !isBoardActive || boardWins[b] || !myTurn) {
                 cellBtn.disabled = true;
             } else {
                 cellBtn.addEventListener('click', () => {
@@ -595,9 +639,9 @@ function handleCellClick(bIndex, cIndex) {
     if (gameMode === 'online-p2p' && currentMatchId) {
         const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
         window.dbUpdate(matchRef, {
-            boardStates: boardStates,
-            boardWins: boardWins,
-            activeBoardIndex: activeBoardIndex,
+            boardStates: serializeBoardStates(boardStates),
+            boardWins: serializeBoardWins(boardWins),
+            activeBoardIndex: activeBoardIndex === null ? -1 : activeBoardIndex,
             currentPlayer: currentPlayer,
             status: matchWon ? 'finished' : 'playing'
         });
@@ -673,6 +717,14 @@ function handleMatchEnd(winner) {
 }
 
 function updateStatus() {
+    if (gameMode === 'online-p2p') {
+        if (currentPlayer === myRole) {
+            turnIndicator.textContent = `Your turn (${currentPlayer})`;
+        } else {
+            turnIndicator.textContent = `Wait for ${currentPlayer}`;
+        }
+        return;
+    }
     turnIndicator.textContent = `Turn: ${currentPlayer}`;
 }
 

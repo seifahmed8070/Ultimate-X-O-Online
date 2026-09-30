@@ -66,7 +66,7 @@ const closeStatsBtn = document.getElementById('closeStatsBtn');
 const statPoints = document.getElementById('statPoints');
 const statTotal = document.getElementById('statTotal');
 
-// زرار مسح البيانات
+// زرار مسح البيانات المطور (يحذف من السيرفر فوراً أولاً)
 const resetDataBtn = document.createElement('button');
 resetDataBtn.id = 'resetDataBtn';
 resetDataBtn.className = 'w-full bg-rose-600/80 hover:bg-rose-600 text-white font-bold py-2.5 rounded-xl text-sm mb-2 shadow-lg transition-all';
@@ -76,21 +76,19 @@ if (statsModal) {
     statsModal.querySelector('.modal-box').insertBefore(resetDataBtn, closeStatsBtn);
 }
 
-resetDataBtn.addEventListener('click', () => {
+resetDataBtn.addEventListener('click', async () => {
     playSound('click');
     if (confirm('Are you sure you want to reset your local data and name?')) {
         if (window.db && playerId) {
-            window.dbRemove(window.dbRef(window.db, 'players/' + playerId));
+            try {
+                await window.dbRemove(window.dbRef(window.db, 'players/' + playerId));
+            } catch (e) {
+                console.log(e);
+            }
         }
         localStorage.clear();
         alert('Data cleared successfully! The page will reload.');
         location.reload();
-    }
-});
-
-window.addEventListener('beforeunload', () => {
-    if (window.db && playerId) {
-        window.dbRemove(window.dbRef(window.db, 'players/' + playerId));
     }
 });
 
@@ -221,6 +219,11 @@ function registerOnlinePresence() {
         status: 'online', 
         lastActive: Date.now() 
     });
+
+    // تنظيف تلقائي عبر الفايربيس لو الجهاز قفل أو فصل فجأة لمنع الأشباح
+    if (window.dbOnDisconnect) {
+        window.dbOnDisconnect(userRef).remove();
+    }
 
     const challengeRef = window.dbRef(window.db, 'challenges/' + playerId);
     window.dbOnValue(challengeRef, (snapshot) => {

@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultimate X  O  | Online Arena</title>
+    <title>Ultimate X O | Online Arena</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="style.css">
-    <!-- مكتبات Firebase للويب -->
+    <!-- مكتبات Firebase للويب مع دعم onDisconnect -->
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-      import { getDatabase, ref, set, onValue, update, remove } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+      import { getDatabase, ref, set, onValue, update, remove, onDisconnect } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
       
       const firebaseConfig = {
         apiKey: "AIzaSyAQLsvV-6roMQOlGkgXPfyC182O4MN6Xgc",
@@ -29,6 +29,7 @@
       window.dbOnValue = onValue;
       window.dbUpdate = update;
       window.dbRemove = remove;
+      window.dbOnDisconnect = onDisconnect;
     </script>
 </head>
 <body class="min-h-screen flex flex-col items-center justify-between p-4 selection:bg-cyan-500 selection:text-white">
@@ -165,7 +166,7 @@
             <div id="victoryIcon" class="text-4xl mb-2">🎉</div>
             <h2 id="victoryTitle" class="font-black text-xl mb-2 tracking-wider text-emerald-400">VICTORY!</h2>
             <p id="victoryText" class="text-sm mb-6 font-semibold opacity-90">Player wins!</p>
-            <button id="nextRoundBtn" class="w-full action-btn font-bold py-2.5 rounded-xl shadow-lg transition-all text-xs uppercase tracking-wide">
+            <button id="nextRoundBtn" class="w-full action-btn font-bold py-2.5 rounded-xl shadow-lg transition-all text-sm uppercase tracking-wide">
                 Play Again
             </button>
         </div>

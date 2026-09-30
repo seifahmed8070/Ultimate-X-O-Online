@@ -26,7 +26,6 @@ function playSound(type) {
 }
 
 const ultimateBoard = document.getElementById('ultimateBoard');
-const mainBoardContainer = document.getElementById('mainBoardContainer');
 const turnIndicator = document.getElementById('turnIndicator');
 const resetBtn = document.getElementById('resetBtn');
 const scoreXEl = document.getElementById('scoreX');
@@ -37,6 +36,7 @@ const htmlRoot = document.getElementById('htmlRoot');
 
 const victoryModal = document.getElementById('victoryModal');
 const victoryTitle = document.getElementById('victoryTitle');
+const victoryText = document.getElementById('victoryText');
 const nextRoundBtn = document.getElementById('nextRoundBtn');
 
 const nameModal = document.getElementById('nameModal');
@@ -60,16 +60,19 @@ const challengeText = document.getElementById('challengeText');
 const acceptChallengeBtn = document.getElementById('acceptChallengeBtn');
 const rejectChallengeBtn = document.getElementById('rejectChallengeBtn');
 
+const rematchModal = document.getElementById('rematchModal');
+const acceptRematchBtn = document.getElementById('acceptRematchBtn');
+const rejectRematchBtn = document.getElementById('rejectRematchBtn');
+
 const statsModal = document.getElementById('statsModal');
 const statsMenuBtn = document.getElementById('statsMenuBtn');
 const closeStatsBtn = document.getElementById('closeStatsBtn');
 const statPoints = document.getElementById('statPoints');
 const statTotal = document.getElementById('statTotal');
 
-// زرار الخروج من الروم أونلاين
 const leaveRoomBtn = document.getElementById('leaveRoomBtn');
+const matchFormatSelect = document.getElementById('matchFormatSelect');
 
-// زرار مسح البيانات
 const resetDataBtn = document.createElement('button');
 resetDataBtn.id = 'resetDataBtn';
 resetDataBtn.className = 'w-full bg-rose-600/85 hover:bg-rose-600 text-white font-bold py-2.5 rounded-xl text-sm mb-2 shadow-lg transition-all';
@@ -110,9 +113,6 @@ if (!leaderboardList && statsModal) {
     leaderboardList = document.getElementById('leaderboardList');
 }
 
-const rulesModal = document.getElementById('rulesModal') || createRulesModal();
-const menuRulesBtn = document.getElementById('menuRulesBtn');
-
 const mainMenu = document.getElementById('mainMenu');
 const homeBtn = document.getElementById('homeBtn');
 const gameModeBadge = document.getElementById('gameModeBadge');
@@ -137,6 +137,10 @@ let currentMatchId = localStorage.getItem('ultimate_match_id') || null;
 let myRole = localStorage.getItem('ultimate_my_role') || 'X';
 let activeMatchUnsubscribe = null;
 let activeChallengeRef = null;
+let myChallengeStatusListener = null;
+
+let currentFormat = '1';
+let targetWins = 1;
 
 htmlRoot.className = currentTheme;
 themeSelector.value = currentTheme;
@@ -148,28 +152,11 @@ themeSelector.addEventListener('change', (e) => {
     localStorage.setItem('ultimate_theme', currentTheme);
 });
 
-function createRulesModal() {
-    let modal = document.createElement('div');
-    modal.id = 'rulesModal';
-    modal.className = 'fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4 backdrop-blur-md';
-    modal.innerHTML = `
-        <div class="modal-box border-2 p-6 rounded-2xl max-w-sm w-full text-center shadow-2xl flex flex-col gap-3">
-            <h2 class="font-black text-lg brand-title">📜 Game Rules</h2>
-            <p class="text-xs text-left leading-relaxed opacity-90">
-                1. Each move sends your opponent to the corresponding local board.<br>
-                2. Win 3 local boards in a row to win the ultimate match!<br>
-                3. +3 Points for Win, +1 for Draw.
-            </p>
-            <button id="closeRulesBtn" class="action-btn font-bold py-2 rounded-xl text-xs mt-2">Got it</button>
-        </div>
-    `;
-    document.body.appendChild(modal);
-    modal.querySelector('#closeRulesBtn').onclick = () => modal.style.display = 'none';
-    return modal;
-}
-
-if (menuRulesBtn) {
-    menuRulesBtn.addEventListener('click', () => { playSound('click'); rulesModal.style.display = 'flex'; });
+function getTargetWins(formatStr) {
+    if (formatStr === '3') return 2;
+    if (formatStr === '5') return 3;
+    if (formatStr === 'infinity') return Infinity;
+    return 1;
 }
 
 if (statsMenuBtn) {
@@ -323,6 +310,8 @@ function sendChallenge(targetId, targetName) {
     localStorage.setItem('ultimate_match_id', currentMatchId);
     localStorage.setItem('ultimate_my_role', myRole);
 
+    const selectedFormat = matchFormatSelect.value;
+
     const initialBoardStates = Array(9).fill().map(() => Array(9).fill(''));
     const initialBoardWins = Array(9).fill(null);
 
@@ -332,36 +321,59 @@ function sendChallenge(targetId, targetName) {
         boardWins: initialBoardWins,
         activeBoardIndex: null,
         currentPlayer: 'X',
-        status: 'waiting'
+        status: 'waiting',
+        format: selectedFormat,
+        matchScores: { X: 0, O: 0 }
     });
 
-    const challengeRef = window.dbRef(window.db, 'challenges/' + targetId);
-    window.dbSet(challengeRef, { 
+    const targetChallengeRef = window.dbRef(window.db, 'challenges/' + targetId);
+    window.dbSet(targetChallengeRef, { 
         fromId: playerId, 
         fromName: playerName, 
         matchId: currentMatchId, 
-        status: 'pending' 
+        status: 'pending',
+        format: selectedFormat 
     });
 
     onlineLobbyModal.style.display = 'none';
     challengeTitle.textContent = `Waiting for ${targetName}...`;
     challengeText.textContent = `Challenge sent! Waiting for them to accept.`;
-    challengeActionButtons.style.display = 'none';
+    document.getElementById('challengeActionButtons').style.display = 'none';
     challengeModal.style.display = 'flex';
-
     gameModeBadge.textContent = `Online vs ${targetName}`;
+
+    // مراقبة هل الخصم رفض التحدي
+    if (myChallengeStatusListener) {
+        myChallengeStatusListener();
+    }
+    myChallengeStatusListener = window.dbOnValue(targetChallengeRef, (snap) => {
+        const data = snap.val();
+        if (data && data.status === 'declined') {
+            alert(`${targetName} declined your challenge.`);
+            challengeModal.style.display = 'none';
+            onlineLobbyModal.style.display = 'flex';
+            window.dbRemove(window.dbRef(window.db, 'matches/' + currentMatchId));
+            if (myChallengeStatusListener) {
+                myChallengeStatusListener();
+                myChallengeStatusListener = null;
+            }
+        }
+    });
+
     listenToMatch(currentMatchId);
 }
 
 let activeChallengeData = null;
-const challengeActionButtons = document.getElementById('challengeActionButtons');
 
 function showIncomingChallenge(data) {
     activeChallengeData = data;
     currentMatchId = data.matchId;
+    
+    let formatLabel = data.format === '3' ? 'Best of 3' : data.format === '5' ? 'Best of 5' : data.format === 'infinity' ? 'Endless' : 'Single Match';
+    
     challengeTitle.textContent = `Challenge from ${data.fromName}!`;
-    challengeText.textContent = `${data.fromName} wants to play with you in the Arena.`;
-    challengeActionButtons.style.display = 'flex';
+    challengeText.textContent = `${data.fromName} wants to play a [${formatLabel}] Cup with you.`;
+    document.getElementById('challengeActionButtons').style.display = 'flex';
     challengeModal.style.display = 'flex';
 }
 
@@ -380,27 +392,12 @@ acceptChallengeBtn.onclick = () => {
     
     registerOnlinePresence('in-game');
 
-    const initialBoardStates = Array(9).fill().map(() => Array(9).fill(''));
-    const initialBoardWins = Array(9).fill(null);
-
     const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
-    window.dbSet(matchRef, {
-        boardStates: initialBoardStates,
-        boardWins: initialBoardWins,
-        activeBoardIndex: null,
-        currentPlayer: 'X',
+    window.dbUpdate(matchRef, {
         status: 'playing'
     });
 
     window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId));
-
-    boardStates = initialBoardStates;
-    boardWins = initialBoardWins;
-    activeBoardIndex = null;
-    currentPlayer = 'X';
-    renderBoard();
-    updateStatus();
-
     listenToMatch(currentMatchId);
 };
 
@@ -408,7 +405,10 @@ rejectChallengeBtn.onclick = () => {
     playSound('click');
     challengeModal.style.display = 'none';
     if (activeChallengeData) {
-        window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId));
+        // نبعت أمر الرفض عشان اللي باعت يعرف
+        const ref = window.dbRef(window.db, 'challenges/' + playerId);
+        window.dbUpdate(ref, { status: 'declined' });
+        setTimeout(() => window.dbRemove(ref), 3000);
     }
 };
 
@@ -434,21 +434,40 @@ function leaveRoom() {
     initGame();
 }
 
-function restartMatch() {
+function requestRestart() {
+    playSound('click');
     if (gameMode === 'online-p2p' && currentMatchId && window.db) {
-        const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
-        window.dbUpdate(matchRef, {
-            boardStates: Array(9).fill().map(() => Array(9).fill('')),
-            boardWins: Array(9).fill(null),
-            activeBoardIndex: null,
-            currentPlayer: 'X'
-        });
+        const matchRef = window.dbRef(window.db, `matches/${currentMatchId}/rematch`);
+        window.dbSet(matchRef, { from: myRole, status: 'pending' });
+        resetBtn.textContent = 'Wait...';
+        nextRoundBtn.textContent = 'Waiting...';
     } else {
+        scores = { X: 0, O: 0 }; // تصفير في الأوفلاين
         initGame();
     }
 }
 
-// الدوال الصارمة الجديدة لضمان الترتيب السليم 100% 
+// قبول أو رفض الريستارت
+acceptRematchBtn.onclick = () => {
+    playSound('click');
+    rematchModal.style.display = 'none';
+    const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
+    window.dbUpdate(matchRef, {
+        boardStates: Array(9).fill().map(() => Array(9).fill('')),
+        boardWins: Array(9).fill(null),
+        activeBoardIndex: null,
+        currentPlayer: 'X',
+        rematch: null
+    });
+};
+
+rejectRematchBtn.onclick = () => {
+    playSound('click');
+    rematchModal.style.display = 'none';
+    window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}/rematch`), { status: 'declined', from: myRole });
+};
+
+
 function sanitizeBoardStates(data) {
     let clean = Array(9).fill().map(() => Array(9).fill(''));
     if (!data) return clean;
@@ -479,7 +498,13 @@ function listenToMatch(matchId) {
     activeMatchUnsubscribe = window.dbOnValue(matchRef, (snapshot) => {
         const data = snapshot.val();
         if (data) {
-            // استخدام الدوال الصارمة هنا
+            currentFormat = data.format || '1';
+            targetWins = getTargetWins(currentFormat);
+            
+            scores = data.matchScores || { X: 0, O: 0 };
+            scoreXEl.textContent = scores.X;
+            scoreOEl.textContent = scores.O;
+
             boardStates = sanitizeBoardStates(data.boardStates);
             boardWins = sanitizeBoardWins(data.boardWins);
             activeBoardIndex = data.activeBoardIndex !== undefined ? data.activeBoardIndex : null;
@@ -490,7 +515,27 @@ function listenToMatch(matchId) {
                 victoryModal.style.display = 'none';
             }
             
+            // معالجة طلب الريستارت (Rematch)
+            if (data.rematch) {
+                if (data.rematch.status === 'pending' && data.rematch.from !== myRole) {
+                    rematchModal.style.display = 'flex';
+                } else if (data.rematch.status === 'declined' && data.rematch.from !== myRole) {
+                    alert('Opponent declined the rematch request.');
+                    resetBtn.textContent = 'Restart';
+                    nextRoundBtn.textContent = 'Play Again';
+                    window.dbUpdate(matchRef, { rematch: null }); 
+                }
+            } else {
+                rematchModal.style.display = 'none';
+                resetBtn.textContent = 'Restart';
+                nextRoundBtn.textContent = 'Play Again';
+            }
+
             if (data.status === 'playing') {
+                if (myChallengeStatusListener) {
+                    myChallengeStatusListener();
+                    myChallengeStatusListener = null;
+                }
                 mainMenu.style.display = 'none';
                 onlineLobbyModal.style.display = 'none';
                 challengeModal.style.display = 'none';
@@ -508,7 +553,10 @@ function listenToMatch(matchId) {
     });
 }
 
-pveMenuBtn.addEventListener('click', () => { playSound('click'); aiDifficultyModal.style.display = 'flex'; });
+pveMenuBtn.addEventListener('click', () => { 
+    playSound('click'); 
+    aiDifficultyModal.style.display = 'flex'; 
+});
 cancelAiModalBtn.addEventListener('click', () => { playSound('click'); aiDifficultyModal.style.display = 'none'; });
 
 document.querySelectorAll('.ai-diff-btn').forEach(btn => {
@@ -517,6 +565,11 @@ document.querySelectorAll('.ai-diff-btn').forEach(btn => {
         aiDifficulty = e.target.getAttribute('data-level');
         gameMode = 'pve';
         gameModeBadge.textContent = `vs AI (${aiDifficulty.toUpperCase()})`;
+        
+        currentFormat = matchFormatSelect.value;
+        targetWins = getTargetWins(currentFormat);
+        scores = { X: 0, O: 0 };
+        
         aiDifficultyModal.style.display = 'none';
         mainMenu.style.display = 'none';
         initGame();
@@ -542,6 +595,10 @@ function initGame() {
     boardWins = Array(9).fill(null);
     boardStates = Array(9).fill().map(() => Array(9).fill(''));
     victoryModal.style.display = 'none';
+    
+    scoreXEl.textContent = scores.X;
+    scoreOEl.textContent = scores.O;
+
     renderBoard();
     updateStatus();
 }
@@ -683,15 +740,29 @@ function handleMatchEnd(winner) {
         window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { points: userArenaPoints });
     }
 
-    victoryTitle.textContent = `${winner} WINS THE MATCH! (+3 pts)`;
+    if (scores[winner] >= targetWins) {
+        victoryTitle.textContent = `🏆 ${winner} WINS THE CUP! 🏆`;
+        victoryText.textContent = `Format Target Reached! (+3 pts)`;
+        if (gameMode === 'online-p2p' && currentMatchId && window.db) {
+            window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), { matchScores: { X: 0, O: 0 } });
+        } else {
+            scores = { X: 0, O: 0 };
+        }
+    } else {
+        victoryTitle.textContent = `${winner} WINS THE ROUND!`;
+        victoryText.textContent = `Target: ${targetWins} Wins`;
+        if (gameMode === 'online-p2p' && currentMatchId && window.db) {
+            window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), { matchScores: scores });
+        }
+    }
+
     victoryModal.style.display = 'flex';
-    
-    nextRoundBtn.onclick = restartMatch;
+    nextRoundBtn.onclick = requestRestart;
 }
 
 function updateStatus() {
     turnIndicator.textContent = currentPlayer;
 }
 
-resetBtn.addEventListener('click', () => { playSound('click'); restartMatch(); });
+resetBtn.addEventListener('click', () => { playSound('click'); requestRestart(); });
 checkPlayerName();

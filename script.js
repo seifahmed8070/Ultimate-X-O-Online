@@ -135,6 +135,7 @@ let currentTheme = localStorage.getItem('ultimate_theme') || 'theme-cyberpunk';
 
 let currentMatchId = localStorage.getItem('ultimate_match_id') || null;
 let myRole = localStorage.getItem('ultimate_my_role') || 'X';
+let opponentName = 'Opponent';
 let activeMatchUnsubscribe = null;
 let activeChallengeRef = null;
 let myChallengeStatusListener = null;
@@ -305,13 +306,13 @@ function fetchOnlinePlayers() {
 function sendChallenge(targetId, targetName) {
     playSound('click');
     myRole = 'X';
+    opponentName = targetName;
     currentMatchId = playerId < targetId ? playerId + '_' + targetId : targetId + '_' + playerId;
     
     localStorage.setItem('ultimate_match_id', currentMatchId);
     localStorage.setItem('ultimate_my_role', myRole);
 
     const selectedFormat = matchFormatSelect.value;
-
     const initialBoardStates = Array(9).fill().map(() => Array(9).fill(''));
     const initialBoardWins = Array(9).fill(null);
 
@@ -323,7 +324,8 @@ function sendChallenge(targetId, targetName) {
         currentPlayer: 'X',
         status: 'waiting',
         format: selectedFormat,
-        matchScores: { X: 0, O: 0 }
+        matchScores: { X: 0, O: 0 },
+        playerNames: { X: playerName, O: targetName }
     });
 
     const targetChallengeRef = window.dbRef(window.db, 'challenges/' + targetId);
@@ -342,7 +344,6 @@ function sendChallenge(targetId, targetName) {
     challengeModal.style.display = 'flex';
     gameModeBadge.textContent = `Online vs ${targetName}`;
 
-    // مراقبة هل الخصم رفض التحدي
     if (myChallengeStatusListener) {
         myChallengeStatusListener();
     }
@@ -368,6 +369,7 @@ let activeChallengeData = null;
 function showIncomingChallenge(data) {
     activeChallengeData = data;
     currentMatchId = data.matchId;
+    opponentName = data.fromName;
     
     let formatLabel = data.format === '3' ? 'Best of 3' : data.format === '5' ? 'Best of 5' : data.format === 'infinity' ? 'Endless' : 'Single Match';
     
@@ -388,13 +390,14 @@ acceptChallengeBtn.onclick = () => {
     myRole = 'O';
     localStorage.setItem('ultimate_match_id', currentMatchId);
     localStorage.setItem('ultimate_my_role', myRole);
-    gameModeBadge.textContent = `Online vs ${activeChallengeData.fromName}`;
+    gameModeBadge.textContent = `Online vs ${opponentName}`;
     
     registerOnlinePresence('in-game');
 
     const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
     window.dbUpdate(matchRef, {
-        status: 'playing'
+        status: 'playing',
+        ['playerNames/O']: playerName
     });
 
     window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId));
@@ -405,7 +408,6 @@ rejectChallengeBtn.onclick = () => {
     playSound('click');
     challengeModal.style.display = 'none';
     if (activeChallengeData) {
-        // نبعت أمر الرفض عشان اللي باعت يعرف
         const ref = window.dbRef(window.db, 'challenges/' + playerId);
         window.dbUpdate(ref, { status: 'declined' });
         setTimeout(() => window.dbRemove(ref), 3000);
@@ -442,12 +444,11 @@ function requestRestart() {
         resetBtn.textContent = 'Wait...';
         nextRoundBtn.textContent = 'Waiting...';
     } else {
-        scores = { X: 0, O: 0 }; // تصفير في الأوفلاين
+        scores = { X: 0, O: 0 };
         initGame();
     }
 }
 
-// قبول أو رفض الريستارت
 acceptRematchBtn.onclick = () => {
     playSound('click');
     rematchModal.style.display = 'none';
@@ -457,6 +458,7 @@ acceptRematchBtn.onclick = () => {
         boardWins: Array(9).fill(null),
         activeBoardIndex: null,
         currentPlayer: 'X',
+        winnerData: null,
         rematch: null
     });
 };
@@ -466,7 +468,6 @@ rejectRematchBtn.onclick = () => {
     rematchModal.style.display = 'none';
     window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}/rematch`), { status: 'declined', from: myRole });
 };
-
 
 function sanitizeBoardStates(data) {
     let clean = Array(9).fill().map(() => Array(9).fill(''));
@@ -505,6 +506,11 @@ function listenToMatch(matchId) {
             scoreXEl.textContent = scores.X;
             scoreOEl.textContent = scores.O;
 
+            if (data.playerNames) {
+                opponentName = myRole === 'X' ? (data.playerNames.O || 'Opponent') : (data.playerNames.X || 'Opponent');
+                gameModeBadge.textContent = `Online vs ${opponentName}`;
+            }
+
             boardStates = sanitizeBoardStates(data.boardStates);
             boardWins = sanitizeBoardWins(data.boardWins);
             activeBoardIndex = data.activeBoardIndex !== undefined ? data.activeBoardIndex : null;
@@ -514,8 +520,12 @@ function listenToMatch(matchId) {
             if (isBoardReset) {
                 victoryModal.style.display = 'none';
             }
+
+            // مزامنة إظهار شاشة الفوز أو الخسارة عند الطرفين عبر الفايربيس
+            if (data.winnerData) {
+                showEndModal(data.winnerData.winnerRole, data.winnerData.winnerName, data.winnerData.isCupWin);
+            }
             
-            // معالجة طلب الريستارت (Rematch)
             if (data.rematch) {
                 if (data.rematch.status === 'pending' && data.rematch.from !== myRole) {
                     rematchModal.style.display = 'flex';
@@ -718,14 +728,16 @@ function checkUltimateWin() {
     return wins.some(([x,y,z]) => boardWins[x] && boardWins[x] !== 'DRAW' && boardWins[x] === boardWins[y] && boardWins[x] === boardWins[z]);
 }
 
-function handleMatchEnd(winner) {
+function handleMatchEnd(winnerRole) {
     playSound('win');
-    scores[winner]++;
+    scores[winnerRole]++;
     scoreXEl.textContent = scores.X;
     scoreOEl.textContent = scores.O;
     stats.total++;
     
-    if(winner === 'X') { 
+    let winnerName = (gameMode === 'online-p2p') ? (winnerRole === myRole ? playerName : opponentName) : `Player ${winnerRole}`;
+
+    if(winnerRole === 'X') { 
         stats.wins++; 
         userArenaPoints += 3; 
     } else { 
@@ -740,20 +752,29 @@ function handleMatchEnd(winner) {
         window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { points: userArenaPoints });
     }
 
-    if (scores[winner] >= targetWins) {
-        victoryTitle.textContent = `🏆 ${winner} WINS THE CUP! 🏆`;
-        victoryText.textContent = `Format Target Reached! (+3 pts)`;
-        if (gameMode === 'online-p2p' && currentMatchId && window.db) {
-            window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), { matchScores: { X: 0, O: 0 } });
-        } else {
-            scores = { X: 0, O: 0 };
-        }
+    const isCupWin = scores[winnerRole] >= targetWins;
+
+    if (gameMode === 'online-p2p' && currentMatchId && window.db) {
+        const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
+        window.dbUpdate(matchRef, {
+            matchScores: scores,
+            winnerData: { winnerRole, winnerName, isCupWin }
+        });
     } else {
-        victoryTitle.textContent = `${winner} WINS THE ROUND!`;
-        victoryText.textContent = `Target: ${targetWins} Wins`;
-        if (gameMode === 'online-p2p' && currentMatchId && window.db) {
-            window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), { matchScores: scores });
-        }
+        showEndModal(winnerRole, winnerName, isCupWin);
+    }
+}
+
+function showEndModal(winnerRole, winnerName, isCupWin) {
+    const isMe = (gameMode === 'online-p2p') ? (winnerRole === myRole) : (winnerRole === 'X');
+
+    if (isCupWin) {
+        victoryTitle.textContent = isMe ? `🏆 YOU WON THE CUP! 🏆` : `💔 ${winnerName} WON THE CUP! 💔`;
+        victoryText.textContent = `Target: ${targetWins} Wins Reached!`;
+        scores = { X: 0, O: 0 };
+    } else {
+        victoryTitle.textContent = isMe ? `🎉 YOU WON THE ROUND! 🎉` : `😢 YOU LOST! (${winnerName} Wins)`;
+        victoryText.textContent = `Score updated. Next round ready!`;
     }
 
     victoryModal.style.display = 'flex';

@@ -205,7 +205,6 @@ function checkPlayerName() {
         userPoints.textContent = userArenaPoints;
         registerOnlinePresence();
 
-        // لو كان في ماتش شغال قبل الريفريش، استرجعه فوراً
         if (currentMatchId) {
             gameMode = 'online-p2p';
             mainMenu.style.display = 'none';
@@ -305,7 +304,6 @@ function fetchOnlinePlayers() {
             if (id === playerId) return;
             let p = players[id];
             
-            // لو اللاعب مشغول في لعبة ثانية، اعرض حالته إنه In Match ومش متاح للتشالنج
             let div = document.createElement('div');
             div.className = 'sub-box p-2.5 rounded-xl border flex justify-between items-center text-xs font-bold';
             
@@ -388,7 +386,6 @@ acceptChallengeBtn.onclick = () => {
     localStorage.setItem('ultimate_my_role', myRole);
     gameModeBadge.textContent = `Online vs ${activeChallengeData.fromName}`;
     
-    // تحديث حالة اللاعبين لإنشغالهم باللعبة
     registerOnlinePresence('in-game');
 
     const initialBoardStates = Array(9).fill().map(() => Array(9).fill(''));
@@ -432,7 +429,6 @@ leaveRoomBtn.addEventListener('click', () => {
 
 function leaveRoom() {
     if (currentMatchId && window.db) {
-        // حذف الماتش أو تحديث حالته
         window.dbRemove(window.dbRef(window.db, 'matches/' + currentMatchId));
     }
     localStorage.removeItem('ultimate_match_id');
@@ -482,7 +478,6 @@ function listenToMatch(matchId) {
                 updateStatus();
             }
         } else {
-            // لو الخصم خرج أو قفل الروم
             alert('The room has been closed by the opponent.');
             leaveRoom();
         }
@@ -660,7 +655,7 @@ function handleMatchEnd(winner) {
 }
 
 function updateStatus() {
-    turnIndicator.textContent = `Turn: ${currentPlayer}`;
+    turnIndicator.textContent = currentPlayer;
 }
 
 resetBtn.addEventListener('click', () => { playSound('click'); initGame(); });

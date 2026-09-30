@@ -66,6 +66,25 @@ const closeStatsBtn = document.getElementById('closeStatsBtn');
 const statPoints = document.getElementById('statPoints');
 const statTotal = document.getElementById('statTotal');
 
+// زرار مسح البيانات
+const resetDataBtn = document.createElement('button');
+resetDataBtn.id = 'resetDataBtn';
+resetDataBtn.className = 'w-full bg-rose-600/80 hover:bg-rose-600 text-white font-bold py-2.5 rounded-xl text-sm mb-2 shadow-lg transition-all';
+resetDataBtn.textContent = '🗑️ Reset Local Data & Profile';
+
+if (statsModal) {
+    statsModal.querySelector('.modal-box').insertBefore(resetDataBtn, closeStatsBtn);
+}
+
+resetDataBtn.addEventListener('click', () => {
+    playSound('click');
+    if (confirm('Are you sure you want to reset your local data and name?')) {
+        localStorage.clear();
+        alert('Data cleared successfully! The page will reload.');
+        location.reload();
+    }
+});
+
 let leaderboardList = document.getElementById('leaderboardList');
 if (!leaderboardList && statsModal) {
     let lbContainer = document.createElement('div');
@@ -472,14 +491,12 @@ function makeAiMove() {
 
 function checkSmallWin(cells) {
     const wins = [[0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6]];
-    const hasWon = wins.some(([x,y,z]) => cells[x] && cells[x] === cells[y] && cells[x] === cells[z]);
-    return hasWon;
+    return wins.some(([x,y,z]) => cells[x] && cells[x] === cells[y] && cells[x] === cells[z]);
 }
 
 function checkUltimateWin() {
     const wins = [[0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6]];
-    const hasWon = wins.some(([x,y,z]) => boardWins[x] && boardWins[x] !== 'DRAW' && boardWins[x] === boardWins[y] && boardWins[x] === boardWins[z]);
-    return hasWon;
+    return wins.some(([x,y,z]) => boardWins[x] && boardWins[x] !== 'DRAW' && boardWins[x] === boardWins[y] && boardWins[x] === boardWins[z]);
 }
 
 function handleMatchEnd(winner) {

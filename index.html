@@ -37,13 +37,15 @@
 
     <!-- نافذة إدخال الاسم لأول مرة -->
     <div id="nameModal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-md">
-        <div class="modal-box border-2 p-6 rounded-2xl max-w-sm w-full text-center shadow-2xl">
+        <div class="modal-box border-2 p-6 rounded-2xl max-w-sm w-full text-center shadow-2xl max-h-[90vh] overflow-y-auto">
             <h2 class="modal-title font-black text-xl mb-3 tracking-wider">Welcome Player!</h2>
             <p class="text-xs mb-4 opacity-80">Enter your name to join the online arena:</p>
-            <input type="text" id="playerNameInput" placeholder="Your Name (e.g. Saif)" class="w-full input-field px-4 py-2.5 rounded-xl text-center mb-4 focus:outline-none font-bold">
-            <button id="saveNameBtn" class="w-full action-btn font-bold py-2.5 rounded-xl shadow-lg transition-all text-sm uppercase tracking-wide">
-                Enter Arena
-            </button>
+            <form id="nameForm" class="flex flex-col gap-3">
+                <input type="text" id="playerNameInput" name="playerName" autocomplete="nickname" enterkeyhint="go" placeholder="Your Name (e.g. Saif)" class="w-full input-field px-4 py-2.5 rounded-xl text-center focus:outline-none font-bold">
+                <button type="submit" id="saveNameBtn" class="w-full action-btn font-bold py-2.5 rounded-xl shadow-lg transition-all text-sm uppercase tracking-wide">
+                    Enter Arena
+                </button>
+            </form>
         </div>
     </div>
 

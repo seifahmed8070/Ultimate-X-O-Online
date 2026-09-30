@@ -197,19 +197,36 @@ function checkPlayerName() {
     }
 }
 
-saveNameBtn.addEventListener('click', () => {
-    playSound('click');
+function submitPlayerName(event) {
+    if (event) event.preventDefault();
+    try { playSound('click'); } catch (e) {}
+
     const name = playerNameInput.value.trim();
-    if (name) {
-        playerName = name;
-        localStorage.setItem('ultimate_player_name', playerName);
-        nameModal.style.display = 'none';
-        mainMenu.style.display = 'flex';
-        menuUsername.textContent = playerName;
-        userPoints.textContent = userArenaPoints;
-        registerOnlinePresence();
-    } else {
+    if (!name) {
         alert('Please enter your name!');
+        playerNameInput.focus();
+        return;
+    }
+
+    playerName = name;
+    localStorage.setItem('ultimate_player_name', playerName);
+    nameModal.style.display = 'none';
+    mainMenu.style.display = 'flex';
+    menuUsername.textContent = playerName;
+    userPoints.textContent = userArenaPoints;
+    whenFirebaseReady(registerOnlinePresence);
+}
+
+const nameForm = document.getElementById('nameForm');
+if (nameForm) {
+    nameForm.addEventListener('submit', submitPlayerName);
+} else if (saveNameBtn) {
+    saveNameBtn.addEventListener('click', submitPlayerName);
+}
+
+playerNameInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+        submitPlayerName(event);
     }
 });
 

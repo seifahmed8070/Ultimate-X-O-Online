@@ -434,7 +434,6 @@ function leaveRoom() {
     initGame();
 }
 
-// دالة تصفير اللعبة الموحدة (أونلاين وأوفلاين)
 function restartMatch() {
     if (gameMode === 'online-p2p' && currentMatchId && window.db) {
         const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
@@ -449,15 +448,27 @@ function restartMatch() {
     }
 }
 
-function sanitizeArray(arr, defaultVal) {
-    if (!arr) return defaultVal;
-    if (Array.isArray(arr)) {
-        return arr.map(item => Array.isArray(item) ? [...item] : (typeof item === 'object' && item !== null ? Object.values(item) : item));
+// الدوال الصارمة الجديدة لضمان الترتيب السليم 100% 
+function sanitizeBoardStates(data) {
+    let clean = Array(9).fill().map(() => Array(9).fill(''));
+    if (!data) return clean;
+    for (let i = 0; i < 9; i++) {
+        if (data[i]) {
+            for (let j = 0; j < 9; j++) {
+                clean[i][j] = data[i][j] ? data[i][j] : '';
+            }
+        }
     }
-    if (typeof arr === 'object') {
-        return Object.values(arr).map(item => Array.isArray(item) ? [...item] : (typeof item === 'object' && item !== null ? Object.values(item) : item));
+    return clean;
+}
+
+function sanitizeBoardWins(data) {
+    let clean = Array(9).fill(null);
+    if (!data) return clean;
+    for (let i = 0; i < 9; i++) {
+        clean[i] = (data[i] && data[i] !== '') ? data[i] : null;
     }
-    return defaultVal;
+    return clean;
 }
 
 function listenToMatch(matchId) {
@@ -468,12 +479,12 @@ function listenToMatch(matchId) {
     activeMatchUnsubscribe = window.dbOnValue(matchRef, (snapshot) => {
         const data = snapshot.val();
         if (data) {
-            boardStates = sanitizeArray(data.boardStates, Array(9).fill().map(() => Array(9).fill('')));
-            boardWins = sanitizeArray(data.boardWins, Array(9).fill(null));
+            // استخدام الدوال الصارمة هنا
+            boardStates = sanitizeBoardStates(data.boardStates);
+            boardWins = sanitizeBoardWins(data.boardWins);
             activeBoardIndex = data.activeBoardIndex !== undefined ? data.activeBoardIndex : null;
             currentPlayer = data.currentPlayer || 'X';
             
-            // إخفاء نافذة الفوز فوراً لو حد عمل ريستارت والمصفوفات رجعت فاضية
             const isBoardReset = boardWins.every(win => win === null);
             if (isBoardReset) {
                 victoryModal.style.display = 'none';
@@ -551,7 +562,6 @@ function renderBoard() {
             overlay.textContent = boardWins[b];
             localBoardDiv.appendChild(overlay);
         } else if (isBoardActive) {
-            // تفعيل الـ CSS الذكي بتاعك للإضاءة حسب الدور
             if (gameMode === 'online-p2p') {
                 if (currentPlayer === myRole) {
                     localBoardDiv.className += ' my-turn-local';
@@ -676,7 +686,6 @@ function handleMatchEnd(winner) {
     victoryTitle.textContent = `${winner} WINS THE MATCH! (+3 pts)`;
     victoryModal.style.display = 'flex';
     
-    // ربط زرار النهاية בדالة المزامنة الأونلاين
     nextRoundBtn.onclick = restartMatch;
 }
 
@@ -684,6 +693,5 @@ function updateStatus() {
     turnIndicator.textContent = currentPlayer;
 }
 
-// ربط زرار الريستارت بدالة المزامنة الأونلاين
 resetBtn.addEventListener('click', () => { playSound('click'); restartMatch(); });
 checkPlayerName();

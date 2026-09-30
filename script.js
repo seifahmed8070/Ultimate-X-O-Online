@@ -79,6 +79,10 @@ if (statsModal) {
 resetDataBtn.addEventListener('click', () => {
     playSound('click');
     if (confirm('Are you sure you want to reset your local data and name?')) {
+        if (window.db && playerId) {
+            // مسح الوجود القديم من الفايربيس
+            window.dbRemove(window.dbRef(window.db, 'players/' + playerId));
+        }
         localStorage.clear();
         alert('Data cleared successfully! The page will reload.');
         location.reload();
@@ -306,10 +310,10 @@ function sendChallenge(targetId, targetName) {
                 gameMode = 'online-p2p';
                 gameModeBadge.textContent = `Online vs ${targetName}`;
             }
-            boardStates = matchData.boardStates;
-            boardWins = matchData.boardWins;
+            boardStates = matchData.boardStates || Array(9).fill().map(() => Array(9).fill(''));
+            boardWins = matchData.boardWins || Array(9).fill(null);
             activeBoardIndex = matchData.activeBoardIndex;
-            currentPlayer = matchData.currentPlayer;
+            currentPlayer = matchData.currentPlayer || 'X';
             renderBoard();
             updateStatus();
         }
@@ -356,10 +360,10 @@ function listenToMatch(matchId) {
     window.dbOnValue(matchRef, (snapshot) => {
         const data = snapshot.val();
         if (data) {
-            boardStates = data.boardStates;
-            boardWins = data.boardWins;
+            boardStates = data.boardStates || Array(9).fill().map(() => Array(9).fill(''));
+            boardWins = data.boardWins || Array(9).fill(null);
             activeBoardIndex = data.activeBoardIndex;
-            currentPlayer = data.currentPlayer;
+            currentPlayer = data.currentPlayer || 'X';
             renderBoard();
             updateStatus();
         }
@@ -532,3 +536,4 @@ function updateStatus() {
 
 resetBtn.addEventListener('click', () => { playSound('click'); initGame(); });
 checkPlayerName();
+initGame();

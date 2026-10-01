@@ -1,440 +1,3378 @@
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-function playSound(type) {
-    if (audioCtx.state === 'suspended') { audioCtx.resume(); }
-    const osc = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-    osc.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-    
-    if (type === 'click') {
-        osc.type = 'sine'; osc.frequency.setValueAtTime(400, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.08); gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime); gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08); osc.start(); osc.stop(audioCtx.currentTime + 0.08);
-    } else if (type === 'win') {
-        osc.type = 'triangle'; osc.frequency.setValueAtTime(300, audioCtx.currentTime); osc.frequency.setValueAtTime(500, audioCtx.currentTime + 0.1); osc.frequency.setValueAtTime(700, audioCtx.currentTime + 0.2); gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime); gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4); osc.start(); osc.stop(audioCtx.currentTime + 0.4);
-    } else if (type === 'bell') {
-        osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime); osc.frequency.setValueAtTime(1320, audioCtx.currentTime + 0.15); gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime); gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35); osc.start(); osc.stop(audioCtx.currentTime + 0.35);
+/*
+ * ============================================================
+ * Ultimate X/O - JavaScript
+ * ============================================================
+ *
+ * تنظيم الملف:
+ * - كل قسم قابل للطي والفتح من السهم في VS Code / Cursor.
+ * - ابحث عن //#region لرؤية الأقسام الرئيسية.
+ * - ابحث عن //#endregion لمعرفة نهاية كل قسم.
+ *
+ * ============================================================
+ */
+
+(() => {
+'use strict';
+
+const $ = id => document.getElementById(id);
+
+
+//#region ======================================================
+// 01 - الإعدادات والثوابت وحالة اللعبة
+//#endregion ===================================================
+
+const EMPTY_BOARD = () =>
+  Array(9).fill(null).map(() => Array(9).fill(''));
+
+const EMPTY_WINS = () =>
+  Array(9).fill(null);
+
+const WIN_LINES = [
+  [0,1,2],
+  [3,4,5],
+  [6,7,8],
+  [0,3,6],
+  [1,4,7],
+  [2,5,8],
+  [0,4,8],
+  [2,4,6]
+];
+
+const SESSION_KEY = 'uxo_session_v3';
+const VIEW_KEY = 'uxo_view_v3';
+const THEME_KEY = 'uxo_theme_v3';
+const OFFLINE_KEY = 'uxo_offline_state_v3';
+const MATCH_KEY = 'uxo_match_v3';
+
+const DISCONNECT_SECONDS = 30;
+
+let player = {
+  id: null,
+  name: '',
+  pin: '',
+  points: 10,
+
+  stats: {
+    total: 0,
+    wins: 0,
+    losses: 0
+  },
+
+  theme:
+    localStorage.getItem(THEME_KEY) ||
+    'theme-cyberpunk'
+};
+
+let currentRoute =
+  localStorage.getItem(VIEW_KEY) ||
+  'home';
+
+let game = {
+  mode: null,
+  ai: null,
+
+  format: '1',
+  targetWins: 1,
+
+  role: 'X',
+
+  opponentId: null,
+  opponentName: 'Opponent',
+
+  matchId: null,
+
+  board: EMPTY_BOARD(),
+  wins: EMPTY_WINS(),
+
+  target: null,
+
+  turn: 'X',
+
+  scores: {
+    X: 0,
+    O: 0
+  },
+
+  status: 'idle',
+  winner: null,
+
+  lastMoveId: null
+};
+
+let listeners = {
+  presence: null,
+  lobby: null,
+  challenge: null,
+  match: null,
+  opponent: null
+};
+
+let timers = {
+  ai: null,
+  disconnect: null,
+  disconnectEndsAt: 0,
+  result: null
+};
+
+let challengeState = {
+  id: null,
+  matchId: null,
+  fromId: null,
+  fromName: null,
+  format: '1'
+};
+
+let outgoingChallenge = null;
+
+let resetHandledId = null;
+let rematchHandledId = null;
+let resultShownId = null;
+
+let sessionToken =
+  's_' +
+  Math.random()
+    .toString(36)
+    .slice(2, 10);
+
+let audio = null;
+
+
+//#region ======================================================
+// 02 - أدوات Firebase والوظائف المساعدة العامة
+//#endregion ===================================================
+
+function dbReady() {
+  return !!window.db;
+}
+
+function ref(path) {
+  return window.dbRef(window.db, path);
+}
+
+function cloneBoard() {
+  return game.board.map(row => row.slice());
+}
+
+function targetWins(format) {
+  if (format === '3') return 2;
+  if (format === '5') return 3;
+  return Infinity;
+}
+
+function formatLabel(format) {
+  if (format === '3') return 'Best of 3';
+  if (format === '5') return 'Best of 5';
+  if (format === 'infinity') return 'Endless';
+
+  return 'Single';
+}
+
+function routeHash(route) {
+  return '#' + route;
+}
+
+function safeName(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[^a-z0-9_\-؀-ي]/g, '')
+    .slice(0, 20);
+}
+
+function showToast(message, type = '') {
+  const el = document.createElement('div');
+
+  el.className = 'toast ' + type;
+  el.textContent = message;
+
+  $('toastRoot').appendChild(el);
+
+  setTimeout(() => {
+    el.remove();
+  }, 3500);
+}
+
+function notice(title, text, after) {
+  $('noticeTitle').textContent = title;
+  $('noticeText').textContent = text;
+
+  $('noticeOverlay').classList.remove('hidden');
+
+  $('noticeOk').onclick = () => {
+    $('noticeOverlay').classList.add('hidden');
+
+    if (after) {
+      after();
     }
+  };
 }
 
-// --- الخلفية المتحركة الهادئة والمريحة للعين ---
-const bgCanvas = document.getElementById('bgCanvas');
-const bgCtx = bgCanvas.getContext('2d');
-let bgParticles = [];
-function resizeBgCanvas() { const dpr = window.devicePixelRatio || 1; bgCanvas.width = window.innerWidth * dpr; bgCanvas.height = window.innerHeight * dpr; bgCtx.scale(dpr, dpr); }
-window.addEventListener('resize', resizeBgCanvas); resizeBgCanvas();
+function playSound(type = 'click') {
+  try {
+    audio ||=
+      new (
+        window.AudioContext ||
+        window.webkitAudioContext
+      )();
 
-for (let i = 0; i < 30; i++) {
-    bgParticles.push({
-        x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight,
-        size: Math.floor(Math.random() * 22) + 12,
-        speedY: (Math.random() * 0.5) + 0.2, speedX: (Math.random() - 0.5) * 0.2,
-        char: Math.random() > 0.5 ? 'X' : 'O',
-        alpha: Math.random() * 0.08 + 0.02, // هادئة جداً لا تسبب أي إزعاج بصري
-        rotation: Math.random() * Math.PI * 2, rotSpeed: (Math.random() - 0.5) * 0.008
+    if (audio.state === 'suspended') {
+      audio.resume();
+    }
+
+    const oscillator = audio.createOscillator();
+    const gain = audio.createGain();
+
+    oscillator.connect(gain);
+    gain.connect(audio.destination);
+
+    const now = audio.currentTime;
+
+    const map = {
+      click: [500, 700, 0.07],
+      start: [500, 950, 0.16],
+      win: [320, 720, 0.35],
+      lose: [280, 110, 0.30],
+      bell: [850, 1250, 0.25]
+    };
+
+    const [startFrequency, endFrequency, duration] =
+      map[type] || map.click;
+
+    oscillator.type =
+      type === 'lose'
+        ? 'sawtooth'
+        : 'sine';
+
+    oscillator.frequency.setValueAtTime(
+      startFrequency,
+      now
+    );
+
+    oscillator.frequency.exponentialRampToValueAtTime(
+      endFrequency,
+      now + duration
+    );
+
+    gain.gain.setValueAtTime(
+      0.11,
+      now
+    );
+
+    gain.gain.exponentialRampToValueAtTime(
+      0.01,
+      now + duration
+    );
+
+    oscillator.start(now);
+    oscillator.stop(now + duration);
+
+  } catch {}
+}
+
+
+//#region ======================================================
+// 03 - الثيم والحفظ والتنقل بين الصفحات
+//#endregion ===================================================
+
+function setTheme(theme) {
+  player.theme = theme;
+
+  document.documentElement.className = theme;
+
+  localStorage.setItem(
+    THEME_KEY,
+    theme
+  );
+
+  if (player.id && dbReady()) {
+    window.dbUpdate(
+      ref('players/' + player.id),
+      {
+        theme
+      }
+    );
+  }
+}
+
+function persistSession() {
+  if (!player.id) return;
+
+  localStorage.setItem(
+    SESSION_KEY,
+    JSON.stringify({
+      id: player.id,
+      name: player.name,
+      token: sessionToken
+    })
+  );
+}
+
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY);
+}
+
+function saveView() {
+  localStorage.setItem(
+    VIEW_KEY,
+    currentRoute
+  );
+}
+
+function saveMatchSession() {
+  if (
+    game.matchId &&
+    game.mode === 'online'
+  ) {
+    localStorage.setItem(
+      MATCH_KEY,
+      JSON.stringify({
+        matchId: game.matchId,
+        role: game.role,
+        opponentId: game.opponentId,
+        opponentName: game.opponentName,
+        format: game.format
+      })
+    );
+  } else {
+    localStorage.removeItem(MATCH_KEY);
+  }
+}
+
+function clearMatchSession() {
+  localStorage.removeItem(MATCH_KEY);
+}
+
+function navigate(route) {
+  if (
+    game.matchId &&
+    route !== 'play' &&
+    route !== 'online' &&
+    route !== 'home' &&
+    route !== 'leaderboard' &&
+    route !== 'profile' &&
+    route !== 'rules'
+  ) {
+    return;
+  }
+
+  currentRoute = route;
+
+  saveView();
+
+  location.hash = routeHash(route);
+
+  renderPage();
+
+  $('mobileNav').classList.remove('open');
+}
+
+
+//#region ======================================================
+// 04 - الصفحات والواجهة الرئيسية وربط الأزرار
+//#endregion ===================================================
+
+function renderPage() {
+  if (
+    game.matchId &&
+    game.status === 'playing'
+  ) {
+    $('app').classList.add('hidden');
+    $('gameScreen').classList.remove('hidden');
+
+    return;
+  }
+
+  $('gameScreen').classList.add('hidden');
+  $('app').classList.remove('hidden');
+
+  const page = $('page');
+
+  const tpl =
+    document.getElementById(
+      currentRoute + 'Template'
+    );
+
+  page.innerHTML = '';
+
+  if (tpl) {
+    page.appendChild(
+      tpl.content.cloneNode(true)
+    );
+  } else {
+    currentRoute = 'home';
+
+    saveView();
+
+    page.appendChild(
+      $('homeTemplate').content.cloneNode(true)
+    );
+  }
+
+  bindPage();
+  updateHeader();
+}
+
+function bindPage() {
+  document
+    .querySelectorAll('[data-route]')
+    .forEach(button => {
+      button.addEventListener(
+        'click',
+        () => {
+          playSound();
+          navigate(button.dataset.route);
+        }
+      );
+    });
+
+  if (currentRoute === 'home') {
+    buildMiniGrid();
+  }
+
+  if (currentRoute === 'play') {
+    bindPlay();
+  }
+
+  if (currentRoute === 'online') {
+    bindOnline();
+  }
+
+  if (currentRoute === 'leaderboard') {
+    loadLeaderboard();
+  }
+
+  if (currentRoute === 'profile') {
+    bindProfile();
+  }
+}
+
+function updateHeader() {
+  $('topUserName').textContent =
+    player.name || 'Player';
+
+  $('topPoints').textContent =
+    (player.points || 0) + ' pts';
+}
+
+function buildMiniGrid() {
+  const miniGrid = $('miniGrid');
+
+  if (!miniGrid) return;
+
+  const marks = [
+    'X', '', 'O',
+    '', 'X', '',
+    'O', '', 'X'
+  ];
+
+  miniGrid.innerHTML =
+    marks
+      .map(mark => `<div>${mark}</div>`)
+      .join('');
+}
+
+
+//#region ======================================================
+// 05 - الوضع المحلي Offline وبداية المباراة
+//#endregion ===================================================
+
+function bindPlay() {
+  document
+    .querySelectorAll('[data-ai]')
+    .forEach(button => {
+      button.addEventListener(
+        'click',
+        () => {
+          startOffline(
+            button.dataset.ai,
+            $('offlineFormat').value
+          );
+        }
+      );
     });
 }
-function animateBgCanvas() {
-    bgCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-    const computedStyle = getComputedStyle(document.documentElement);
-    const primaryColor = computedStyle.getPropertyValue('--primary').trim() || '#06b6d4';
-    bgParticles.forEach(p => {
-        p.y -= p.speedY; p.x += p.speedX; p.rotation += p.rotSpeed;
-        if (p.y < -50) { p.y = window.innerHeight + 50; p.x = Math.random() * window.innerWidth; }
-        bgCtx.save(); bgCtx.translate(p.x, p.y); bgCtx.rotate(p.rotation); bgCtx.font = `bold ${p.size}px sans-serif`; bgCtx.fillStyle = primaryColor; bgCtx.globalAlpha = p.alpha; bgCtx.textAlign = 'center'; bgCtx.textBaseline = 'middle'; bgCtx.fillText(p.char, 0, 0); bgCtx.restore();
-    });
-    requestAnimationFrame(animateBgCanvas);
+
+function startOffline(ai, format) {
+  playSound('start');
+
+  game = {
+    ...game,
+
+    mode: 'offline',
+
+    ai,
+
+    format,
+
+    targetWins: targetWins(format),
+
+    role: 'X',
+
+    opponentId: null,
+
+    opponentName:
+      'AI ' + ai,
+
+    matchId: null,
+
+    board: EMPTY_BOARD(),
+
+    wins: EMPTY_WINS(),
+
+    target: null,
+
+    turn: 'X',
+
+    scores: {
+      X: 0,
+      O: 0
+    },
+
+    status: 'playing',
+
+    winner: null,
+
+    lastMoveId: null
+  };
+
+  localStorage.setItem(
+    OFFLINE_KEY,
+    JSON.stringify({
+      ai,
+      format
+    })
+  );
+
+  openGame();
 }
-animateBgCanvas();
 
-// --- العناصر والأساسيات ---
-const ultimateBoard = document.getElementById('ultimateBoard');
-const turnIndicator = document.getElementById('turnIndicator');
-const resetBtn = document.getElementById('resetBtn');
-const scoreXEl = document.getElementById('scoreX');
-const scoreOEl = document.getElementById('scoreO');
-const themeSelector = document.getElementById('themeSelector');
-const htmlRoot = document.getElementById('htmlRoot');
 
-const victoryModal = document.getElementById('victoryModal');
-const victoryTitle = document.getElementById('victoryTitle');
-const victoryText = document.getElementById('victoryText');
-const acceptRematchBtn = document.getElementById('acceptRematchBtn');
-const declineRematchBtn = document.getElementById('declineRematchBtn');
+//#region ======================================================
+// 06 - الوضع Online واللوبي والتحديات
+//#endregion ===================================================
 
-const resetRequestModal = document.getElementById('resetRequestModal');
-const acceptResetBtn = document.getElementById('acceptResetBtn');
-const declineResetBtn = document.getElementById('declineResetBtn');
+function bindOnline() {
+  $('refreshPlayers').onclick = () => {
+    playSound();
+    refreshLobby();
+  };
 
-const disconnectModal = document.getElementById('disconnectModal');
-const disconnectTimerEl = document.getElementById('disconnectTimer');
-const forceLeaveBtn = document.getElementById('forceLeaveBtn');
+  refreshLobby();
+}
 
-const connectionStatus = document.getElementById('connectionStatus');
-const connDot = document.getElementById('connDot');
-const connText = document.getElementById('connText');
+function refreshLobby() {
+  if (
+    !dbReady() ||
+    !player.id
+  ) {
+    $('playersList').innerHTML =
+      '<p class="hint">قاعدة البيانات غير متاحة.</p>';
 
-const nameModal = document.getElementById('nameModal');
-const playerNameInput = document.getElementById('playerNameInput');
-const playerPinInput = document.getElementById('playerPinInput');
-const authSubmitBtn = document.getElementById('authSubmitBtn');
-const authSwitchBtn = document.getElementById('authSwitchBtn');
-const authModalTitle = document.getElementById('authModalTitle');
-const authModalDesc = document.getElementById('authModalDesc');
+    return;
+  }
 
-const mainMenu = document.getElementById('mainMenu');
-const menuUsername = document.getElementById('menuUsername');
-const userPoints = document.getElementById('userPoints');
-const aiDifficultyModal = document.getElementById('aiDifficultyModal');
-const pveMenuBtn = document.getElementById('pveMenuBtn');
-const cancelAiModalBtn = document.getElementById('cancelAiModalBtn');
+  if (listeners.lobby) {
+    listeners.lobby();
+  }
 
-const onlineLobbyModal = document.getElementById('onlineLobbyModal');
-const onlineLobbyMenuBtn = document.getElementById('onlineLobbyMenuBtn');
-const closeOnlineLobbyBtn = document.getElementById('closeOnlineLobbyBtn');
-const refreshLobbyBtn = document.getElementById('refreshLobbyBtn');
-const onlinePlayersList = document.getElementById('onlinePlayersList');
+  listeners.lobby =
+    window.dbOnValue(
+      ref('players'),
+      snapshot => {
+        const data =
+          snapshot.val() || {};
 
-const challengeModal = document.getElementById('challengeModal');
-const challengeTitle = document.getElementById('challengeTitle');
-const challengeText = document.getElementById('challengeText');
-const acceptChallengeBtn = document.getElementById('acceptChallengeBtn');
-const rejectChallengeBtn = document.getElementById('rejectChallengeBtn');
-const cancelChallengeBtn = document.getElementById('cancelChallengeBtn');
+        const players =
+          Object.entries(data)
+            .filter(
+              ([id, user]) =>
+                id !== player.id &&
+                user &&
+                user.status === 'online'
+            )
+            .sort(
+              (a, b) =>
+                (a[1].name || '')
+                  .localeCompare(
+                    b[1].name || ''
+                  )
+            );
 
-const rulesModal = document.getElementById('rulesModal');
-const menuRulesBtn = document.getElementById('menuRulesBtn');
-const closeRulesBtn = document.getElementById('closeRulesBtn');
-const statsModal = document.getElementById('statsModal');
-const statsMenuBtn = document.getElementById('statsMenuBtn');
-const closeStatsBtn = document.getElementById('closeStatsBtn');
-const statPoints = document.getElementById('statPoints');
-const statTotal = document.getElementById('statTotal');
-const profileNameDisplay = document.getElementById('profileNameDisplay');
-const deleteAccountBtn = document.getElementById('deleteAccountBtn');
-const logoutBtn = document.getElementById('logoutBtn');
-const homeBtn = document.getElementById('homeBtn');
-const matchFormatSelect = document.getElementById('matchFormatSelect');
-const gameModeBadge = document.getElementById('gameModeBadge');
+        $('onlineCount').textContent =
+          players.length;
 
-let gameMode = 'pve'; 
-let aiDifficulty = 'impossible'; 
-let currentPlayer = 'X';
-let activeBoardIndex = null; 
-let boardWins = Array(9).fill(null); 
-let boardStates = Array(9).fill().map(() => Array(9).fill(''));
+        $('playersList').innerHTML =
+          players.length
+            ? ''
+            : '<p class="hint">لا يوجد لاعب متاح الآن. اضغط تحديث بعد دخول لاعب آخر.</p>';
 
-let playerName = '';
-let playerPin = '';
-let playerId = null;
-let clientSessionId = 's_' + Math.random().toString(36).substring(2, 9);
-let userArenaPoints = 10;
-let stats = { total: 0, wins: 0, losses: 0 };
-let scores = { X: 0, O: 0 };
-let currentTheme = localStorage.getItem('ultimate_theme') || 'theme-cyberpunk';
+        players.forEach(
+          ([id, user]) => {
+            const row =
+              document.createElement('div');
 
-let currentMatchId = null;
-let myRole = 'X';
-let opponentName = 'Opponent';
-let opponentId = null;
-let activeMatchUnsubscribe = null;
-let activeChallengeRef = null;
-let myChallengeStatusListener = null;
-let sessionListenerRef = null;
-let opponentStatusUnsubscribe = null;
-let disconnectTimerInterval = null;
+            row.className =
+              'player-row';
 
-let currentFormat = '1';
-let targetWins = 1;
+            row.innerHTML = `
+              <div>
+                <strong>
+                  🟢 ${escapeHtml(user.name || 'Player')}
+                </strong>
 
-htmlRoot.className = currentTheme; themeSelector.value = currentTheme;
-themeSelector.addEventListener('change', (e) => { playSound('click'); currentTheme = e.target.value; htmlRoot.className = currentTheme; localStorage.setItem('ultimate_theme', currentTheme); if (window.db && playerId) window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { theme: currentTheme }); });
-function getTargetWins(formatStr) { if (formatStr === '3') return 2; if (formatStr === '5') return 3; if (formatStr === 'infinity') return Infinity; return 1; }
+                <small>
+                  ${user.points || 0} pts
+                </small>
+              </div>
 
-// --- تنبيهات النظام ---
-let customModal = document.createElement('div'); customModal.id = 'customModal'; customModal.className = 'fixed inset-0 bg-black/80 z-[80] hidden items-center justify-center p-4 backdrop-blur-md';
-customModal.innerHTML = `<div class="modal-box border p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl flex flex-col gap-4 relative z-10"><h2 id="customModalTitle" class="font-black text-xl text-cyan-400">Notice</h2><p id="customModalText" class="text-sm text-slate-200 leading-relaxed"></p><div id="customModalButtons" class="flex gap-2 mt-2"><button id="customModalOkBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white cursor-pointer">OK</button></div></div>`; document.body.appendChild(customModal);
-function showCustomAlert(title, text, onClose = null) { playSound('click'); document.getElementById('customModalTitle').textContent = title; document.getElementById('customModalText').textContent = text; document.getElementById('customModalButtons').innerHTML = `<button id="customModalOkBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white cursor-pointer">OK</button>`; customModal.style.display = 'flex'; document.getElementById('customModalOkBtn').onclick = () => { customModal.style.display = 'none'; if (onClose) onClose(); }; }
-function showCustomConfirm(title, text, onConfirm, onCancel = null) { playSound('click'); document.getElementById('customModalTitle').textContent = title; document.getElementById('customModalText').textContent = text; document.getElementById('customModalButtons').innerHTML = `<button id="customModalConfirmBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 hover:bg-cyan-500 text-white cursor-pointer">Yes</button><button id="customModalCancelBtn" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-3 rounded-xl text-sm cursor-pointer">Cancel</button>`; customModal.style.display = 'flex'; document.getElementById('customModalConfirmBtn').onclick = () => { customModal.style.display = 'none'; onConfirm(); }; document.getElementById('customModalCancelBtn').onclick = () => { customModal.style.display = 'none'; if (onCancel) onCancel(); }; }
+              <button class="primary-btn">
+                Challenge
+              </button>
+            `;
 
-menuRulesBtn.addEventListener('click', () => { playSound('click'); rulesModal.style.display = 'flex'; });
-closeRulesBtn.addEventListener('click', () => { playSound('click'); rulesModal.style.display = 'none'; });
-if (statsMenuBtn) { statsMenuBtn.addEventListener('click', () => { playSound('click'); profileNameDisplay.textContent = playerName; statPoints.textContent = userArenaPoints; statTotal.textContent = stats.total; fetchGlobalLeaderboard(); statsModal.style.display = 'flex'; }); }
-if (closeStatsBtn) { closeStatsBtn.addEventListener('click', () => { playSound('click'); statsModal.style.display = 'none'; }); }
-logoutBtn.addEventListener('click', () => { playSound('click'); showCustomConfirm('Logout', 'Are you sure you want to sign out?', async () => { if (window.db && playerId) await window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { status: 'offline' }); localStorage.clear(); location.reload(); }, () => {}); });
-deleteAccountBtn.addEventListener('click', () => { playSound('click'); showCustomConfirm('Delete Account', 'Are you sure you want to delete your account permanently?', async () => { if (window.db && playerId) { await window.dbRemove(window.dbRef(window.db, 'players/' + playerId)); await window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId)); } localStorage.clear(); location.reload(); }, () => {}); });
+            row
+              .querySelector('button')
+              .onclick = () =>
+                sendChallenge(
+                  id,
+                  user.name
+                );
 
-// إصلاح زر العودة للمينيو (Menu Button & Cancel Logic)
-homeBtn.addEventListener('click', () => { 
-    playSound('click'); 
-    if (gameMode === 'online-p2p' && currentMatchId) {
-        showCustomConfirm('Leave Match?', 'Are you sure you want to leave the current match? This will end the game and close the room.', 
-            () => { leaveRoom(); }, // Yes: leaves room
-            () => {} // Cancel: does nothing, stays in game safely!
+            $('playersList')
+              .appendChild(row);
+          }
         );
-    } else {
-        mainMenu.style.display = 'flex'; 
+      }
+    );
+}
+
+function escapeHtml(value) {
+  return String(value).replace(
+    /[&<>'"]/g,
+    character => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#39;',
+      '"': '&quot;'
+    }[character])
+  );
+}
+
+async function sendChallenge(
+  targetId,
+  targetName
+) {
+  if (
+    !dbReady() ||
+    !player.id
+  ) {
+    return;
+  }
+
+  const format =
+    $('onlineFormat').value;
+
+  const matchId =
+    window.dbPush(
+      ref('matches')
+    ).key;
+
+  outgoingChallenge = {
+    targetId,
+    matchId
+  };
+
+  game = {
+    ...game,
+
+    matchId,
+
+    mode: 'online',
+
+    role: 'X',
+
+    opponentId: targetId,
+
+    opponentName: targetName,
+
+    format,
+
+    targetWins:
+      targetWins(format),
+
+    status: 'waiting'
+  };
+
+  saveMatchSession();
+
+  const match = {
+    version: 1,
+
+    status: 'waiting',
+
+    format,
+
+    createdAt: Date.now(),
+
+    updatedAt: Date.now(),
+
+    players: {
+      X: player.id,
+      O: targetId
+    },
+
+    playerNames: {
+      X: player.name,
+      O: targetName
+    },
+
+    board: EMPTY_BOARD(),
+
+    wins: EMPTY_WINS(),
+
+    turn: 'X',
+
+    scores: {
+      X: 0,
+      O: 0
+    },
+
+    phase: 'waiting',
+
+    request: null,
+
+    rematch: null,
+
+    result: null,
+
+    closed: false
+  };
+
+  try {
+    await window.dbSet(
+      ref('matches/' + matchId),
+      match
+    );
+
+    await window.dbSet(
+      ref(
+        'challenges/' + targetId
+      ),
+      {
+        status: 'pending',
+        matchId,
+        fromId: player.id,
+        fromName: player.name,
+        format,
+        createdAt: Date.now()
+      }
+    );
+
+    showToast(
+      `تم إرسال تحدي إلى ${targetName}`,
+      'good'
+    );
+
+    watchMatch(matchId);
+
+  } catch (error) {
+    showToast(
+      'تعذر إرسال التحدي',
+      'bad'
+    );
+
+    game.matchId = null;
+  }
+}
+
+function watchChallenge() {
+  if (
+    !dbReady() ||
+    !player.id
+  ) {
+    return;
+  }
+
+  if (listeners.challenge) {
+    listeners.challenge();
+  }
+
+  listeners.challenge =
+    window.dbOnValue(
+      ref(
+        'challenges/' +
+        player.id
+      ),
+      snapshot => {
+        const data =
+          snapshot.val();
+
+        if (
+          data &&
+          data.status === 'pending' &&
+          data.matchId
+        ) {
+          challengeState = {
+            id: player.id,
+            matchId: data.matchId,
+            fromId: data.fromId,
+            fromName: data.fromName,
+            format: data.format || '1'
+          };
+
+          $('challengeTitle')
+            .textContent =
+            `تحدي من ${data.fromName}`;
+
+          $('challengeText')
+            .textContent =
+            `طلب مباراة ${formatLabel(data.format || '1')}. المود المحدد من الطرف الآخر: Ultimate X/O Online.`;
+
+          $('challengeOverlay')
+            .classList
+            .remove('hidden');
+        }
+      }
+    );
+}
+
+async function acceptChallenge() {
+  const challenge =
+    challengeState;
+
+  if (!challenge.matchId) {
+    return;
+  }
+
+  playSound('start');
+
+  $('challengeOverlay')
+    .classList
+    .add('hidden');
+
+  game = {
+    ...game,
+
+    matchId:
+      challenge.matchId,
+
+    mode: 'online',
+
+    role: 'O',
+
+    opponentId:
+      challenge.fromId,
+
+    opponentName:
+      challenge.fromName,
+
+    format:
+      challenge.format,
+
+    targetWins:
+      targetWins(
+        challenge.format
+      ),
+
+    status: 'playing'
+  };
+
+  saveMatchSession();
+
+  await window.dbUpdate(
+    ref(
+      'matches/' +
+      challenge.matchId
+    ),
+    {
+      status: 'playing',
+      phase: 'active',
+      updatedAt: Date.now(),
+      acceptedAt: Date.now()
     }
-});
+  );
 
-let leaderboardList = document.getElementById('leaderboardList');
-if (!leaderboardList && statsModal) { let lbContainer = document.createElement('div'); lbContainer.className = 'mt-4 text-left'; lbContainer.innerHTML = `<h3 class="font-bold text-xs mb-2 text-cyan-400 uppercase tracking-wider">🏆 Global Arena Leaderboard</h3><div id="leaderboardList" class="flex flex-col gap-1.5 max-h-36 overflow-y-auto bg-black/50 p-2.5 rounded-xl border border-white/10 text-xs"><p class="text-center text-slate-400 py-2">Loading leaderboard...</p></div>`; statsModal.querySelector('.modal-box').appendChild(lbContainer); leaderboardList = document.getElementById('leaderboardList'); }
+  await window.dbRemove(
+    ref(
+      'challenges/' +
+      player.id
+    )
+  );
 
-function setupPresence() { if (!window.db) return; window.dbOnValue(window.dbRef(window.db, ".info/connected"), (snap) => { if (snap.val() === true && playerName && playerId) registerOnlinePresence(gameMode === 'online-p2p' ? 'in-game' : 'online'); }); }
-function registerOnlinePresence(status = 'online') { if (!window.db || !playerName || !playerId) return; const userRef = window.dbRef(window.db, 'players/' + playerId); window.dbOnDisconnect(userRef).update({ status: 'offline', lastActive: Date.now() }).then(() => { window.dbSet(userRef, { name: playerName, pin: playerPin, points: userArenaPoints, status: status, theme: currentTheme, currentSessionId: clientSessionId, lastActive: Date.now() }); }); if (sessionListenerRef) sessionListenerRef(); sessionListenerRef = window.dbOnValue(window.dbRef(window.db, 'players/' + playerId + '/currentSessionId'), (snap) => { const remoteSession = snap.val(); if (remoteSession && remoteSession !== clientSessionId) { showCustomAlert('Session Terminated', '⚠️ تم تسجيل الدخول بهذا الحساب من جهاز آخر!', () => location.reload()); } }); if (!activeChallengeRef) { activeChallengeRef = window.dbOnValue(window.dbRef(window.db, 'challenges/' + playerId), (snapshot) => { const data = snapshot.val(); if (data && data.status === 'pending') { playSound('bell'); showIncomingChallenge(data); } else if (data && data.status === 'cancelled') { challengeModal.style.display = 'none'; showCustomAlert('Challenge Cancelled', 'The challenge was cancelled by the sender.'); window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId)); } }); } }
-
-let isRegisterMode = false;
-authSwitchBtn.addEventListener('click', () => { playSound('click'); isRegisterMode = !isRegisterMode; authModalTitle.textContent = isRegisterMode ? 'Create Account' : 'Player Login'; authModalDesc.textContent = isRegisterMode ? 'Choose lowercase username (no spaces) & 4-digit PIN:' : 'Enter your lowercase username (no spaces) and 4-digit PIN:'; authSubmitBtn.textContent = isRegisterMode ? 'Register' : 'Login'; authSwitchBtn.textContent = isRegisterMode ? 'Already have an account? Login' : "Don't have an account? Create one"; });
-authSubmitBtn.addEventListener('click', async () => { playSound('click'); let name = playerNameInput.value.toLowerCase().replace(/\s+/g, ''); let pin = playerPinInput.value.trim(); if (!name || pin.length !== 4 || isNaN(pin)) return showCustomAlert('Error', 'Please enter a valid lowercase name (no spaces) and a 4-digit numeric PIN!'); if (!window.db) return showCustomAlert('Error', 'Database connecting... Please wait.'); const snapshot = await window.dbGet(window.dbRef(window.db, 'players')); if (isRegisterMode) { let exists = false; if (snapshot.exists()) { snapshot.forEach(childSnap => { if (childSnap.val().name === name) exists = true; }); } if (exists) return showCustomAlert('Error', 'Username already taken! Please login or choose another name.'); playerId = 'p_' + Math.random().toString(36).substring(2, 9); playerName = name; playerPin = pin; userArenaPoints = 10; stats = { total: 0, wins: 0, losses: 0 }; } else { let matchedUser = null; let matchedId = null; if (snapshot.exists()) { snapshot.forEach(childSnap => { let u = childSnap.val(); if (u.name === name && u.pin === pin) { matchedUser = u; matchedId = childSnap.key; } }); } if (!matchedUser) return showCustomAlert('Login Failed', 'Invalid username or 4-digit PIN!'); playerId = matchedId; playerName = matchedUser.name; playerPin = matchedUser.pin; userArenaPoints = matchedUser.points || 10; } nameModal.style.display = 'none'; mainMenu.style.display = 'flex'; menuUsername.textContent = playerName; userPoints.textContent = userArenaPoints; registerOnlinePresence(); initGame(); });
-function checkPlayerName() { nameModal.style.display = 'flex'; mainMenu.style.display = 'flex'; }
-
-function fetchGlobalLeaderboard() { if (!window.db) return; window.dbOnValue(window.dbRef(window.db, 'players'), (snapshot) => { const players = snapshot.val(); if (!players || !leaderboardList) return; let sortedPlayers = Object.values(players).sort((a, b) => (b.points || 0) - (a.points || 0)); leaderboardList.innerHTML = ''; sortedPlayers.slice(0, 5).forEach((p, index) => { let row = document.createElement('div'); row.className = 'flex justify-between items-center py-1.5 px-2.5 border-b border-white/10 last:border-none'; row.innerHTML = `<span>#${index + 1} ${p.name}</span> <span class="font-bold text-cyan-400">${p.points || 0} pts</span>`; leaderboardList.appendChild(row); }); }, { onlyOnce: true }); }
-onlineLobbyMenuBtn.addEventListener('click', () => { playSound('click'); onlineLobbyModal.style.display = 'flex'; fetchOnlinePlayers(); }); closeOnlineLobbyBtn.addEventListener('click', () => { playSound('click'); onlineLobbyModal.style.display = 'none'; }); refreshLobbyBtn.addEventListener('click', () => { playSound('click'); fetchOnlinePlayers(); });
-function fetchOnlinePlayers() { if (!window.db) return; window.dbOnValue(window.dbRef(window.db, 'players'), (snapshot) => { const players = snapshot.val(); onlinePlayersList.innerHTML = ''; if (!players) return onlinePlayersList.innerHTML = '<p class="text-xs text-center opacity-50 py-4">No players online.</p>'; let count = 0; Object.keys(players).forEach(id => { if (id === playerId) return; let p = players[id]; let div = document.createElement('div'); div.className = 'bg-black/40 p-3 rounded-2xl border border-white/10 flex justify-between items-center text-xs font-bold'; if (p.status === 'in-game') { div.innerHTML = `<span>🔴 ${p.name}</span> <span class="text-rose-400 text-[10px] px-2.5 py-1 rounded-lg bg-rose-950/40 border border-rose-800/50">In Match 🎮</span>`; } else { count++; div.innerHTML = `<span>🟢 ${p.name}</span> <button class="bg-cyan-600 hover:bg-cyan-500 px-3.5 py-1.5 rounded-xl text-xs text-white shadow cursor-pointer">Challenge</button>`; div.querySelector('button').addEventListener('click', () => sendChallenge(id, p.name)); } onlinePlayersList.appendChild(div); }); if (count === 0 && onlinePlayersList.children.length === 0) onlinePlayersList.innerHTML = '<p class="text-xs text-center opacity-50 py-4">No other available players online.</p>'; }); }
-
-let outgoingTargetId = null;
-function sendChallenge(targetId, targetName) { playSound('bell'); myRole = 'X'; opponentName = targetName; opponentId = targetId; outgoingTargetId = targetId; currentMatchId = playerId < targetId ? playerId + '_' + targetId : targetId + '_' + playerId; const selectedFormat = matchFormatSelect.value; window.dbSet(window.dbRef(window.db, 'matches/' + currentMatchId), { boardStates: Array(9).fill().map(() => Array(9).fill('')), boardWins: Array(9).fill(null), activeBoardIndex: null, currentPlayer: 'X', status: 'waiting', format: selectedFormat, matchScores: { X: 0, O: 0 }, playerNames: { X: playerName, O: targetName } }); window.dbSet(window.dbRef(window.db, 'challenges/' + targetId), { fromId: playerId, fromName: playerName, matchId: currentMatchId, status: 'pending', format: selectedFormat }); onlineLobbyModal.style.display = 'none'; challengeTitle.textContent = `Waiting for ${targetName}...`; challengeText.textContent = `Challenge sent! Waiting for them to accept.`; document.getElementById('challengeActionButtons').style.display = 'none'; cancelChallengeBtn.classList.remove('hidden'); challengeModal.style.display = 'flex'; gameModeBadge.textContent = `Online vs ${targetName}`; if (myChallengeStatusListener) myChallengeStatusListener(); myChallengeStatusListener = window.dbOnValue(window.dbRef(window.db, 'challenges/' + targetId), (snap) => { const data = snap.val(); if (data && data.status === 'declined') { showCustomAlert('Challenge Declined', `${targetName} declined your challenge.`); challengeModal.style.display = 'none'; cancelChallengeBtn.classList.add('hidden'); onlineLobbyModal.style.display = 'flex'; window.dbRemove(window.dbRef(window.db, 'matches/' + currentMatchId)); if (myChallengeStatusListener) { myChallengeStatusListener(); myChallengeStatusListener = null; } } }); listenToMatch(currentMatchId); }
-cancelChallengeBtn.onclick = () => { playSound('click'); if (outgoingTargetId) window.dbUpdate(window.dbRef(window.db, 'challenges/' + outgoingTargetId), { status: 'cancelled' }); challengeModal.style.display = 'none'; cancelChallengeBtn.classList.add('hidden'); if (currentMatchId) window.dbRemove(window.dbRef(window.db, 'matches/' + currentMatchId)); onlineLobbyModal.style.display = 'flex'; };
-let activeChallengeData = null;
-function showIncomingChallenge(data) { activeChallengeData = data; currentMatchId = data.matchId; opponentName = data.fromName; opponentId = data.fromId; let formatLabel = data.format === '3' ? 'Best of 3' : data.format === '5' ? 'Best of 5' : data.format === 'infinity' ? 'Endless' : 'Single Match'; challengeTitle.textContent = `Challenge from ${data.fromName}!`; challengeText.textContent = `${data.fromName} challenged you to a [${formatLabel}].`; document.getElementById('challengeActionButtons').style.display = 'flex'; cancelChallengeBtn.classList.add('hidden'); challengeModal.style.display = 'flex'; }
-acceptChallengeBtn.onclick = () => { playSound('start'); challengeModal.style.display = 'none'; onlineLobbyModal.style.display = 'none'; mainMenu.style.display = 'none'; gameMode = 'online-p2p'; myRole = 'O'; gameModeBadge.textContent = `Online vs ${opponentName}`; registerOnlinePresence('in-game'); window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), { status: 'playing', ['playerNames/O']: playerName }); window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId)); listenToMatch(currentMatchId); };
-rejectChallengeBtn.onclick = () => { playSound('click'); challengeModal.style.display = 'none'; if (activeChallengeData) { window.dbUpdate(window.dbRef(window.db, 'challenges/' + playerId), { status: 'declined' }); setTimeout(() => window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId)), 3000); } };
-
-// --- نظام مراقبة الاتصال والتايمر (30 ثانية خروج تلقائي) ---
-function startDisconnectTimer() {
-    if (disconnectTimerInterval) return; 
-    disconnectModal.style.display = 'flex';
-    let timeLeft = 30;
-    disconnectTimerEl.textContent = timeLeft;
-    
-    disconnectTimerInterval = setInterval(() => {
-        timeLeft--;
-        disconnectTimerEl.textContent = timeLeft;
-        if (timeLeft <= 0) {
-            stopDisconnectTimer();
-            showCustomAlert('Match Aborted', 'Opponent did not reconnect in time. You won by default!', () => {
-                leaveRoom();
-            });
-        }
-    }, 1000);
+  watchMatch(
+    challenge.matchId
+  );
 }
 
-function stopDisconnectTimer() {
-    if (disconnectTimerInterval) {
-        clearInterval(disconnectTimerInterval);
-        disconnectTimerInterval = null;
+async function declineChallenge() {
+  if (challengeState.matchId) {
+    await window.dbUpdate(
+      ref(
+        'matches/' +
+        challengeState.matchId
+      ),
+      {
+        status: 'closed',
+        closed: true,
+        closedReason: 'declined',
+        updatedAt: Date.now()
+      }
+    );
+  }
+
+  await window.dbRemove(
+    ref(
+      'challenges/' +
+      player.id
+    )
+  );
+
+  $('challengeOverlay')
+    .classList
+    .add('hidden');
+
+  playSound();
+}
+
+function watchMatch(matchId) {
+  if (listeners.match) {
+    listeners.match();
+  }
+
+  listeners.match =
+    window.dbOnValue(
+      ref(
+        'matches/' +
+        matchId
+      ),
+      snapshot => {
+        const data =
+          snapshot.val();
+
+        if (!data) {
+          handleRemoteClose();
+          return;
+        }
+
+        game.format =
+          data.format ||
+          game.format;
+
+        game.targetWins =
+          targetWins(
+            game.format
+          );
+
+        game.status =
+          data.status ||
+          game.status;
+
+        game.target =
+          data.target === null ||
+          typeof data.target === 'number'
+            ? data.target
+            : null;
+
+        game.board =
+          normalizeBoard(
+            data.board
+          );
+
+        game.wins =
+          Array.isArray(data.wins)
+            ? data.wins.slice(0, 9)
+            : EMPTY_WINS();
+
+        game.turn =
+          data.turn || 'X';
+
+        game.scores =
+          data.scores || {
+            X: 0,
+            O: 0
+          };
+
+        game.opponentName =
+          game.role === 'X'
+            ? (
+                data.playerNames?.O ||
+                game.opponentName
+              )
+            : (
+                data.playerNames?.X ||
+                game.opponentName
+              );
+
+        if (data.status === 'waiting') {
+          game.status = 'waiting';
+          return;
+        }
+
+        if (
+          data.closed ||
+          data.status === 'closed'
+        ) {
+          closeGameUI(
+            'تم إنهاء المباراة من الطرف الآخر.'
+          );
+
+          return;
+        }
+
+        if (
+          data.status === 'playing'
+        ) {
+          game.status = 'playing';
+
+          saveMatchSession();
+
+          registerPresence('in-game');
+
+          renderGame();
+
+          handleConnectionFromMatch(data);
+
+          handleResetState(data);
+
+          handleRematchState(data);
+
+          if (data.result) {
+            showResultOnce(
+              data.result,
+              data.result.id
+            );
+          }
+        }
+      }
+    );
+}
+
+
+//#region ======================================================
+// 07 - مزامنة المباراة Online وإغلاق الغرفة
+//#endregion ===================================================
+
+function normalizeBoard(board) {
+  return (
+    Array.isArray(board) &&
+    board.length === 9
+  )
+    ? board.map(row =>
+        Array.isArray(row) &&
+        row.length === 9
+          ? row.map(value => value || '')
+          : Array(9).fill('')
+      )
+    : EMPTY_BOARD();
+}
+
+function handleRemoteClose() {
+  if (game.matchId) {
+    closeGameUI(
+      'انتهت الغرفة أو تم إغلاقها.'
+    );
+  }
+}
+
+function closeGameUI(message) {
+  stopDisconnect();
+
+  clearMatchSession();
+
+  game.matchId = null;
+  game.status = 'idle';
+
+  cleanupMatchListener();
+
+  registerPresence('online');
+
+  $('gameScreen')
+    .classList
+    .add('hidden');
+
+  $('app')
+    .classList
+    .remove('hidden');
+
+  navigate('online');
+
+  if (message) {
+    notice(
+      'Match Closed',
+      message
+    );
+  }
+}
+
+function cleanupMatchListener() {
+  if (listeners.match) {
+    listeners.match();
+    listeners.match = null;
+  }
+
+  if (listeners.opponent) {
+    listeners.opponent();
+    listeners.opponent = null;
+  }
+}
+
+
+//#region ======================================================
+// 08 - رسم لوحة Ultimate X/O وحركات اللاعبين
+//#endregion ===================================================
+
+function renderGame() {
+  $('app')
+    .classList
+    .add('hidden');
+
+  $('gameScreen')
+    .classList
+    .remove('hidden');
+
+  $('gameOpponent')
+    .textContent =
+    'vs ' + game.opponentName;
+
+  $('gameTitle')
+    .textContent =
+    game.mode === 'offline'
+      ? `AI • ${game.ai}`
+      : `Online • ${formatLabel(game.format)}`;
+
+  $('scoreX')
+    .textContent =
+    game.scores.X;
+
+  $('scoreO')
+    .textContent =
+    game.scores.O;
+
+  $('turnText')
+    .textContent =
+    game.turn;
+
+  const board =
+    $('ultimateBoard');
+
+  board.innerHTML = '';
+
+  for (let b = 0; b < 9; b++) {
+    const local =
+      document.createElement('div');
+
+    const open =
+      game.wins[b] === null;
+
+    const active =
+      game.target === null ||
+      game.target === b;
+
+    local.className =
+      'local-board ' +
+      (
+        open && active
+          ? 'active'
+          : ''
+      ) +
+      (
+        !open
+          ? ' locked'
+          : ''
+      );
+
+    if (!open) {
+      const overlay =
+        document.createElement('div');
+
+      overlay.className =
+        'local-overlay';
+
+      overlay.textContent =
+        game.wins[b] === 'DRAW'
+          ? '='
+          : game.wins[b];
+
+      local.appendChild(
+        overlay
+      );
     }
-    disconnectModal.style.display = 'none';
-}
 
-forceLeaveBtn.addEventListener('click', () => {
-    playSound('click');
-    stopDisconnectTimer();
-    leaveRoom();
-});
+    for (let c = 0; c < 9; c++) {
+      const button =
+        document.createElement('button');
 
-function listenToOpponentStatus(oppId) {
-    if (opponentStatusUnsubscribe) opponentStatusUnsubscribe();
-    opponentStatusUnsubscribe = window.dbOnValue(window.dbRef(window.db, 'players/' + oppId + '/status'), (snap) => {
-        let st = snap.val();
-        if (st === 'offline') {
-            connDot.className = 'w-2 h-2 rounded-full bg-rose-500 animate-pulse';
-            connText.textContent = 'Disconnected';
-            if (gameMode === 'online-p2p' && currentMatchId) {
-                startDisconnectTimer();
-            }
-        } else {
-            connDot.className = 'w-2 h-2 rounded-full bg-emerald-500';
-            connText.textContent = 'Online';
-            stopDisconnectTimer();
-        }
-    });
-}
+      const value =
+        game.board[b][c];
 
-function leaveRoom() {
-    stopDisconnectTimer();
-    if (opponentStatusUnsubscribe) { opponentStatusUnsubscribe(); opponentStatusUnsubscribe = null; }
-    if (currentMatchId && window.db) window.dbRemove(window.dbRef(window.db, 'matches/' + currentMatchId));
-    currentMatchId = null; connectionStatus.classList.add('hidden'); registerOnlinePresence('online'); gameMode = 'pve'; gameModeBadge.textContent = 'Offline Mode'; mainMenu.style.display = 'flex'; initGame();
-}
+      button.className =
+        'cell ' +
+        (
+          value === 'X'
+            ? 'x'
+            : value === 'O'
+              ? 'o'
+              : ''
+        );
 
-resetBtn.addEventListener('click', () => { playSound('click'); if (gameMode === 'online-p2p' && currentMatchId) { showCustomAlert('Restart Request', 'Restart request sent! Waiting for opponent...', null); window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), { resetRequest: { from: myRole, response: 'pending' } }); } else { initGame(); } });
-acceptResetBtn.onclick = () => { playSound('start'); resetRequestModal.style.display = 'none'; if (currentMatchId) window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), { boardStates: Array(9).fill().map(() => Array(9).fill('')), boardWins: Array(9).fill(null), activeBoardIndex: null, currentPlayer: 'X', winnerData: null, resetRequest: null }); };
-declineResetBtn.onclick = () => { playSound('click'); resetRequestModal.style.display = 'none'; if (currentMatchId) window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId + '/resetRequest'), { response: 'declined' }); };
-acceptRematchBtn.onclick = () => { playSound('click'); acceptRematchBtn.textContent = '⏳ Waiting for Opponent...'; acceptRematchBtn.disabled = true; if (gameMode === 'online-p2p' && currentMatchId && window.db) window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}/postMatch`), { [myRole]: 'accepted' }); else { victoryModal.style.display = 'none'; initGame(); } };
-declineRematchBtn.onclick = () => { playSound('click'); if (gameMode === 'online-p2p' && currentMatchId && window.db) window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}/postMatch`), { [myRole]: 'declined' }); else { victoryModal.style.display = 'none'; leaveRoom(); } };
+      button.textContent =
+        value;
 
-let hasDeclinedAlertShown = false;
-function listenToMatch(matchId) {
-    if (activeMatchUnsubscribe) activeMatchUnsubscribe();
-    activeMatchUnsubscribe = window.dbOnValue(window.dbRef(window.db, 'matches/' + matchId), (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-            currentFormat = data.format || '1'; targetWins = getTargetWins(currentFormat);
-            scores = data.matchScores || { X: 0, O: 0 }; scoreXEl.textContent = scores.X; scoreOEl.textContent = scores.O;
-            if (data.playerNames) { 
-                opponentName = myRole === 'X' ? (data.playerNames.O || 'Opponent') : (data.playerNames.X || 'Opponent'); 
-                gameModeBadge.textContent = `Online vs ${opponentName}`; 
-            }
-            boardStates = data.boardStates || Array(9).fill().map(() => Array(9).fill(''));
-            boardWins = data.boardWins || Array(9).fill(null);
-            activeBoardIndex = data.activeBoardIndex !== undefined ? data.activeBoardIndex : null; currentPlayer = data.currentPlayer || 'X';
+      button.disabled =
+        !!value ||
+        !open ||
+        !active ||
+        game.status !== 'playing' ||
+        game.turn !== game.role;
 
-            if (data.resetRequest) { let req = data.resetRequest; if (req.response === 'pending' && req.from !== myRole) { resetRequestModal.style.display = 'flex'; } else if (req.response === 'declined' && req.from === myRole) { showCustomAlert('Request Declined', 'Your opponent declined to restart the current board.'); window.dbUpdate(window.dbRef(window.db, 'matches/' + matchId), { resetRequest: null }); } } else { resetRequestModal.style.display = 'none'; }
-            
-            const isBoardReset = boardWins.every(win => win === null);
-            if (isBoardReset) { victoryModal.style.display = 'none'; acceptRematchBtn.disabled = false; hasDeclinedAlertShown = false; }
-            if (data.winnerData) showEndModal(data.winnerData.winnerRole, data.winnerData.winnerName, data.winnerData.isCupWin);
+      if (!button.disabled) {
+        button.onclick = () =>
+          makeMove(b, c);
+      }
 
-            if (data.postMatch) {
-                let xVote = data.postMatch.X, oVote = data.postMatch.O;
-                if (xVote === 'accepted' && oVote === 'accepted') {
-                    playSound('start'); let newScores = scores;
-                    if (scores.X >= targetWins || scores.O >= targetWins) newScores = { X: 0, O: 0 };
-                    if (myRole === 'X') window.dbUpdate(window.dbRef(window.db, 'matches/' + matchId), { boardStates: Array(9).fill().map(() => Array(9).fill('')), boardWins: Array(9).fill(null), activeBoardIndex: null, currentPlayer: 'X', winnerData: null, postMatch: null, matchScores: newScores });
-                } else if ((xVote === 'declined' || oVote === 'declined') && !hasDeclinedAlertShown) {
-                    hasDeclinedAlertShown = true; victoryModal.style.display = 'none'; showCustomAlert('Match Ended', 'تم إنهاء المباراة لأن أحد اللاعبين غادر.', () => leaveRoom());
-                }
-            }
-            
-            if (data.status === 'playing') {
-                if (myChallengeStatusListener) { myChallengeStatusListener(); myChallengeStatusListener = null; }
-                mainMenu.style.display = 'none'; onlineLobbyModal.style.display = 'none'; challengeModal.style.display = 'none'; aiDifficultyModal.style.display = 'none'; 
-                gameMode = 'online-p2p'; connectionStatus.classList.remove('hidden'); connectionStatus.style.display = 'flex'; registerOnlinePresence('in-game'); renderBoard(); updateStatus();
-                
-                if (!opponentStatusUnsubscribe && matchId) {
-                    let parts = matchId.split('_');
-                    opponentId = (parts[0] === playerId) ? parts[1] : parts[0];
-                    listenToOpponentStatus(opponentId);
-                }
-            }
-        } else {
-            if (gameMode === 'online-p2p' && !hasDeclinedAlertShown) { hasDeclinedAlertShown = true; showCustomAlert('Room Closed', 'انتهت الجلسة أو قام المنافس بمغادرة الغرفة.', () => leaveRoom()); }
-        }
-    });
-}
-
-pveMenuBtn.addEventListener('click', () => { playSound('click'); aiDifficultyModal.style.display = 'flex'; });
-cancelAiModalBtn.addEventListener('click', () => { playSound('click'); aiDifficultyModal.style.display = 'none'; });
-document.querySelectorAll('.ai-diff-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        playSound('start'); aiDifficulty = e.target.getAttribute('data-level'); gameMode = 'pve'; gameModeBadge.textContent = `vs AI (${aiDifficulty.toUpperCase()})`; currentFormat = matchFormatSelect.value; targetWins = getTargetWins(currentFormat); scores = { X: 0, O: 0 }; aiDifficultyModal.style.display = 'none'; mainMenu.style.display = 'none'; connectionStatus.style.display = 'none'; connectionStatus.classList.add('hidden'); initGame();
-    });
-});
-
-function initGame() { currentPlayer = 'X'; activeBoardIndex = null; boardWins = Array(9).fill(null); boardStates = Array(9).fill().map(() => Array(9).fill('')); victoryModal.style.display = 'none'; scoreXEl.textContent = scores.X; scoreOEl.textContent = scores.O; renderBoard(); updateStatus(); }
-
-function renderBoard() {
-    ultimateBoard.innerHTML = '';
-    for (let b = 0; b < 9; b++) {
-        const localBoardDiv = document.createElement('div'); localBoardDiv.className = 'local-grid local-board-bg p-2 rounded-xl border-2 transition-all relative overflow-hidden';
-        const isBoardActive = (activeBoardIndex === null || activeBoardIndex === b);
-        if (boardWins[b]) { localBoardDiv.className += ' border-opacity-40 opacity-90'; const overlay = document.createElement('div'); overlay.className = 'absolute inset-0 overlay-bg flex items-center justify-center font-black text-5xl z-10'; overlay.textContent = boardWins[b]; localBoardDiv.appendChild(overlay); }
-        else if (isBoardActive) { if (gameMode === 'online-p2p') { if (currentPlayer === myRole) localBoardDiv.className += ' my-turn-local'; else localBoardDiv.className += ' waiting-local opacity-60'; } else localBoardDiv.className += ' active-local-board'; }
-        else { localBoardDiv.className += ' opacity-40'; }
-        for (let c = 0; c < 9; c++) {
-            const cellBtn = document.createElement('button'); cellBtn.className = 'cell-btn aspect-square rounded-md font-bold text-lg md:text-xl flex items-center justify-center transition-all cursor-pointer'; cellBtn.textContent = boardStates[b] && boardStates[b][c] ? boardStates[b][c] : '';
-            if ((boardStates[b] && boardStates[b][c] !== '') || !isBoardActive || boardWins[b]) { cellBtn.disabled = true; } else { cellBtn.addEventListener('click', () => { triggerMove(b, c); }); }
-            localBoardDiv.appendChild(cellBtn);
-        }
-        ultimateBoard.appendChild(localBoardDiv);
+      local.appendChild(
+        button
+      );
     }
+
+    board.appendChild(
+      local
+    );
+  }
 }
 
-function triggerMove(b, c) { playSound('click'); handleCellClick(b, c); }
+function openGame() {
+  $('app')
+    .classList
+    .add('hidden');
 
-function handleCellClick(bIndex, cIndex) {
-    if (gameMode === 'online-p2p' && currentPlayer !== myRole) return;
-    if (!boardStates[bIndex] || boardStates[bIndex][cIndex] !== '' || boardWins[bIndex] !== null) return;
-    boardStates[bIndex][cIndex] = currentPlayer;
-    if (checkSmallWin(boardStates[bIndex])) { boardWins[bIndex] = currentPlayer; } else if (boardStates[bIndex].every(cell => cell !== '')) { boardWins[bIndex] = 'DRAW'; }
-    if (checkUltimateWin()) { return handleMatchEnd(currentPlayer); }
-    const isGlobalDraw = boardWins.every(win => win !== null);
-    if (isGlobalDraw) { return handleMatchEnd('DRAW'); }
-    activeBoardIndex = (boardWins[cIndex] !== null) ? null : cIndex; currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
-    if (gameMode === 'online-p2p' && currentMatchId) { window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), { boardStates: boardStates, boardWins: boardWins, activeBoardIndex: activeBoardIndex, currentPlayer: currentPlayer }); }
-    renderBoard(); updateStatus();
-    if (gameMode === 'pve' && currentPlayer === 'O') { setTimeout(makeAiMove, 600); }
+  $('gameScreen')
+    .classList
+    .remove('hidden');
+
+  registerPresence(
+    game.mode === 'online'
+      ? 'in-game'
+      : 'online'
+  );
+
+  renderGame();
 }
 
-// --- ذكاء اصطناعي احترافي وفائق الذكاء (Grandmaster AI) ---
-function getAiWinBlockMove(b, empty, player) {
-    for (let i of empty) { boardStates[b][i] = player; let wins = checkSmallWin(boardStates[b]); boardStates[b][i] = ''; if (wins) return i; }
-    return null;
+function validMove(b, c) {
+  return (
+    game.status === 'playing' &&
+    game.wins[b] === null &&
+    (
+      game.target === null ||
+      game.target === b
+    ) &&
+    !game.board[b][c] &&
+    game.turn === game.role
+  );
 }
 
-function evaluateCellForImpossibleAI(b, c) {
+function makeMove(b, c) {
+  if (!validMove(b, c)) {
+    return;
+  }
+
+  playSound();
+
+  applyMove(
+    b,
+    c,
+    game.role
+  );
+}
+
+function applyMove(b, c, mark) {
+  game.board[b][c] = mark;
+
+  if (
+    checkSmallWin(
+      game.board[b]
+    )
+  ) {
+    game.wins[b] = mark;
+
+  } else if (
+    game.board[b].every(Boolean)
+  ) {
+    game.wins[b] = 'DRAW';
+  }
+
+  const winner =
+    checkUltimateWin(
+      game.wins
+    );
+
+  const draw =
+    !winner &&
+    game.wins.every(
+      value => value !== null
+    );
+
+  if (winner || draw) {
+    game.winner =
+      winner || 'DRAW';
+
+    finishRound(
+      game.winner
+    );
+
+    return;
+  }
+
+  game.target =
+    game.wins[c] !== null
+      ? null
+      : c;
+
+  game.turn =
+    mark === 'X'
+      ? 'O'
+      : 'X';
+
+  renderGame();
+
+  if (
+    game.mode === 'online'
+  ) {
+    publishMove();
+
+  } else if (
+    game.turn === 'O'
+  ) {
+    scheduleAI();
+  }
+}
+
+async function publishMove() {
+  if (!game.matchId) {
+    return;
+  }
+
+  const moveId =
+    player.id +
+    '_' +
+    Date.now().toString(36) +
+    '_' +
+    Math.random()
+      .toString(36)
+      .slice(2, 6);
+
+  game.lastMoveId =
+    moveId;
+
+  await window.dbUpdate(
+    ref(
+      'matches/' +
+      game.matchId
+    ),
+    {
+      board: cloneBoard(),
+      wins: game.wins.slice(),
+      target: game.target,
+      turn: game.turn,
+      version: Date.now(),
+      lastMoveId: moveId,
+      updatedAt: Date.now()
+    }
+  );
+}
+
+
+//#region ======================================================
+// 09 - الذكاء الاصطناعي AI
+//#endregion ===================================================
+
+
+//#region ------------------------------------------------------
+// 09.1 - تشغيل وتأخير الذكاء الاصطناعي
+//#endregion --------------------------------------------------
+
+function scheduleAI() {
+  clearTimeout(timers.ai);
+
+  timers.ai =
+    setTimeout(
+      () => {
+        timers.ai = null;
+
+        if (
+          game.mode === 'offline' &&
+          game.status === 'playing' &&
+          game.turn === 'O'
+        ) {
+          aiMove();
+        }
+      },
+      aiDelay()
+    );
+}
+
+function aiDelay() {
+  if (game.ai === 'easy') {
+    return 220;
+  }
+
+  if (game.ai === 'medium') {
+    return 330;
+  }
+
+  return 480;
+}
+
+function aiMove() {
+  const moves =
+    getLegalMoves();
+
+  if (!moves.length) {
+    return;
+  }
+
+  let move;
+
+  if (game.ai === 'easy') {
+    move =
+      easyMove(moves);
+
+  } else if (game.ai === 'medium') {
+    move =
+      mediumMove(moves);
+
+  } else {
+    move =
+      grandmasterMove(moves);
+  }
+
+  applyMove(
+    move.b,
+    move.c,
+    'O'
+  );
+}
+
+
+//#region ------------------------------------------------------
+// 09.2 - أدوات وتقييم حركات الذكاء الاصطناعي
+//#endregion --------------------------------------------------
+
+function getLegalMoves() {
+  const moves = [];
+
+  const boards =
+    game.target === null
+      ? game.wins
+          .map(
+            (value, index) =>
+              value === null
+                ? index
+                : -1
+          )
+          .filter(index => index >= 0)
+      : [game.target];
+
+  for (const boardIndex of boards) {
+    for (let cellIndex = 0; cellIndex < 9; cellIndex++) {
+      if (
+        !game.board[boardIndex][cellIndex]
+      ) {
+        moves.push({
+          b: boardIndex,
+          c: cellIndex
+        });
+      }
+    }
+  }
+
+  return moves;
+}
+
+function smallWinMove(b, mark) {
+  for (let c = 0; c < 9; c++) {
+    if (!game.board[b][c]) {
+      game.board[b][c] = mark;
+
+      const win =
+        checkSmallWin(
+          game.board[b]
+        );
+
+      game.board[b][c] = '';
+
+      if (win) {
+        return c;
+      }
+    }
+  }
+
+  return null;
+}
+
+function easyMove(moves) {
+  const winning =
+    moves.find(
+      move =>
+        smallWinMove(
+          move.b,
+          'O'
+        ) === move.c
+    );
+
+  if (
+    winning &&
+    Math.random() < 0.72
+  ) {
+    return winning;
+  }
+
+  const blocking =
+    moves.find(
+      move =>
+        smallWinMove(
+          move.b,
+          'X'
+        ) === move.c
+    );
+
+  if (
+    blocking &&
+    Math.random() < 0.58
+  ) {
+    return blocking;
+  }
+
+  const scored =
+    moves
+      .map(move => ({
+        move,
+
+        score:
+          cellHeuristic(
+            move.b,
+            move.c
+          ) +
+          Math.random() * 4
+      }))
+      .sort(
+        (a, b) =>
+          b.score - a.score
+      );
+
+  return scored[
+    Math.floor(
+      Math.random() *
+      Math.min(
+        4,
+        scored.length
+      )
+    )
+  ].move;
+}
+
+function mediumMove(moves) {
+  const win =
+    moves.find(
+      move =>
+        smallWinMove(
+          move.b,
+          'O'
+        ) === move.c
+    );
+
+  if (win) {
+    return win;
+  }
+
+  const block =
+    moves.find(
+      move =>
+        smallWinMove(
+          move.b,
+          'X'
+        ) === move.c
+    );
+
+  if (block) {
+    return block;
+  }
+
+  const scored =
+    moves
+      .map(move => ({
+        move,
+
+        score:
+          cellHeuristic(
+            move.b,
+            move.c
+          ) +
+          futureBoardValue(
+            move.b,
+            move.c
+          ) * 1.4
+      }))
+      .sort(
+        (a, b) =>
+          b.score - a.score
+      );
+
+  return scored[0].move;
+}
+
+function grandmasterMove(moves) {
+  let best = null;
+  let bestScore = -Infinity;
+
+  for (const move of moves) {
+    const before =
+      game.board[move.b][move.c];
+
+    game.board[move.b][move.c] =
+      'O';
+
     let score = 0;
-    if (c === 4) score += 4;
-    else if ([0,2,6,8].includes(c)) score += 2;
-    if (boardWins[c] !== null) score -= 30; // تجنب إعطاء المنافس لعب حر
-    else {
-        let nextEmpty = []; for (let i=0; i<9; i++) if (boardStates[c][i] === '') nextEmpty.push(i);
-        let oppCanWin = getAiWinBlockMove(c, nextEmpty, 'X');
-        if (oppCanWin !== null) score -= 15;
+
+    if (
+      checkSmallWin(
+        game.board[move.b]
+      )
+    ) {
+      score += 100000;
     }
-    return score;
+
+    const next =
+      game.wins[move.c];
+
+    if (next !== null) {
+      score -= 1800;
+    }
+
+    score +=
+      cellHeuristic(
+        move.b,
+        move.c
+      ) * 8;
+
+    score +=
+      futureBoardValue(
+        move.b,
+        move.c
+      ) * 20;
+
+    score +=
+      createThreats(
+        move.b,
+        'O'
+      ) * 90;
+
+    score -=
+      createThreats(
+        move.b,
+        'X'
+      ) * 120;
+
+    score +=
+      globalPotential(
+        'O'
+      ) * 150;
+
+    score -=
+      globalPotential(
+        'X'
+      ) * 170;
+
+    const replies =
+      getOpponentReplies(
+        move.b,
+        move.c
+      );
+
+    for (const reply of replies) {
+      game.board[reply.b][reply.c] =
+        'X';
+
+      if (
+        checkSmallWin(
+          game.board[reply.b]
+        )
+      ) {
+        score -= 45000;
+      }
+
+      score -=
+        createThreats(
+          reply.b,
+          'X'
+        ) * 90;
+
+      game.board[reply.b][reply.c] =
+        '';
+    }
+
+    game.board[move.b][move.c] =
+      before;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = move;
+    }
+  }
+
+  return best || moves[0];
 }
 
-function makeAiMove() {
-    let targetBoards = [];
-    if (activeBoardIndex === null || boardWins[activeBoardIndex] !== null) { for (let i = 0; i < 9; i++) if (boardWins[i] === null) targetBoards.push(i); } else { targetBoards.push(activeBoardIndex); }
-    if (targetBoards.length === 0) return;
-    
-    let bestMoves = []; let maxScore = -Infinity;
+function getOpponentReplies(b, c) {
+  const target =
+    game.wins[c] === null
+      ? c
+      : null;
 
-    for (let b of targetBoards) {
-        let empty = []; for (let c = 0; c < 9; c++) if (boardStates[b][c] === '') empty.push(c);
-        if (empty.length > 0) {
-            if (aiDifficulty === 'easy') {
-                bestMoves.push({b: b, c: empty[Math.floor(Math.random() * empty.length)]});
-            } else if (aiDifficulty === 'medium') {
-                let win = getAiWinBlockMove(b, empty, 'O'); let block = getAiWinBlockMove(b, empty, 'X');
-                if (win !== null) bestMoves.push({b: b, c: win});
-                else if (block !== null) bestMoves.push({b: b, c: block});
-                else bestMoves.push({b: b, c: empty[Math.floor(Math.random() * empty.length)]});
-            } else {
-                let win = getAiWinBlockMove(b, empty, 'O'); let block = getAiWinBlockMove(b, empty, 'X');
-                if (win !== null) { triggerMove(b, win); return; }
-                if (block !== null) {
-                    let score = 60 + evaluateCellForImpossibleAI(b, block);
-                    if (score > maxScore) { maxScore = score; bestMoves = [{b: b, c: block}]; }
-                    else if (score === maxScore) { bestMoves.push({b: b, c: block}); }
-                    continue;
-                }
-                for (let c of empty) {
-                    let score = evaluateCellForImpossibleAI(b, c);
-                    if (score > maxScore) { maxScore = score; bestMoves = [{b: b, c: c}]; }
-                    else if (score === maxScore) { bestMoves.push({b: b, c: c}); }
-                }
-            }
+  const boards =
+    target === null
+      ? game.wins
+          .map(
+            (value, index) =>
+              value === null
+                ? index
+                : -1
+          )
+          .filter(index => index >= 0)
+      : [target];
+
+  const replies = [];
+
+  for (const boardIndex of boards) {
+    for (let cellIndex = 0; cellIndex < 9; cellIndex++) {
+      if (
+        !game.board[boardIndex][cellIndex]
+      ) {
+        replies.push({
+          b: boardIndex,
+          c: cellIndex
+        });
+      }
+    }
+  }
+
+  return replies.slice(0, 18);
+}
+
+function cellHeuristic(b, c) {
+  let score = 0;
+
+  if (c === 4) {
+    score += 9;
+
+  } else if (
+    [0, 2, 6, 8].includes(c)
+  ) {
+    score += 5;
+
+  } else {
+    score += 2;
+  }
+
+  if (
+    game.wins[c] === null
+  ) {
+    score += 5;
+  } else {
+    score -= 8;
+  }
+
+  return score;
+}
+
+function futureBoardValue(b, c) {
+  let value = 0;
+
+  if (
+    game.wins[c] === null
+  ) {
+    const empties =
+      game.board[c].filter(
+        cell => !cell
+      ).length;
+
+    value +=
+      (9 - empties) * 2;
+  }
+
+  return value;
+}
+
+function createThreats(b, mark) {
+  let count = 0;
+
+  for (const line of WIN_LINES) {
+    const values =
+      line.map(
+        index =>
+          game.board[b][index]
+      );
+
+    if (
+      values.filter(
+        value => value === mark
+      ).length === 2 &&
+      values.includes('')
+    ) {
+      count++;
+    }
+  }
+
+  return count;
+}
+
+function globalPotential(mark) {
+  let count = 0;
+
+  for (const line of WIN_LINES) {
+    const values =
+      line.map(
+        index =>
+          game.wins[index]
+      );
+
+    const enemy =
+      mark === 'O'
+        ? 'X'
+        : 'O';
+
+    if (
+      !values.includes(enemy) &&
+      values.filter(
+        value => value === mark
+      ).length > 0
+    ) {
+      count++;
+    }
+  }
+
+  return count;
+}
+
+
+//#region ======================================================
+// 11 - فحص الفوز والتعادل وإنهاء الجولة
+//#endregion ===================================================
+
+function checkSmallWin(cells) {
+  return WIN_LINES.some(
+    ([a, b, c]) =>
+      cells[a] &&
+      cells[a] === cells[b] &&
+      cells[a] === cells[c]
+  );
+}
+
+function checkUltimateWin(wins) {
+  return WIN_LINES.some(
+    ([a, b, c]) =>
+      wins[a] &&
+      wins[a] !== 'DRAW' &&
+      wins[a] === wins[b] &&
+      wins[a] === wins[c]
+  );
+}
+
+async function finishRound(winner) {
+  if (
+    game.status !== 'playing'
+  ) {
+    return;
+  }
+
+  game.status = 'finished';
+
+  clearTimeout(timers.ai);
+
+  const me = game.role;
+
+  const isWin =
+    winner !== 'DRAW' &&
+    winner === me;
+
+  const isDraw =
+    winner === 'DRAW';
+
+  if (isWin) {
+    player.points += 3;
+    player.stats.wins++;
+
+  } else if (!isDraw) {
+    player.points =
+      Math.max(
+        0,
+        player.points - 1
+      );
+
+    player.stats.losses++;
+
+  } else {
+    player.points += 1;
+  }
+
+  player.stats.total++;
+
+  updateHeader();
+
+  await savePlayerStats();
+
+  const cupWin =
+    winner !== 'DRAW' &&
+    game.scores[winner] + 1 >=
+      game.targetWins;
+
+  game.scores[
+    winner === 'DRAW'
+      ? 'X'
+      : winner
+  ] +=
+    winner === 'DRAW'
+      ? 0
+      : 1;
+
+  const result = {
+    id:
+      'r_' +
+      Date.now().toString(36),
+
+    winner,
+
+    winnerName:
+      winner === 'DRAW'
+        ? 'Draw'
+        : (
+            winner === me
+              ? player.name
+              : game.opponentName
+          ),
+
+    cupWin,
+
+    scores:
+      game.scores
+  };
+
+  if (
+    game.mode === 'online'
+  ) {
+    await window.dbUpdate(
+      ref(
+        'matches/' +
+        game.matchId
+      ),
+      {
+        status: 'playing',
+        phase: 'result',
+        scores: game.scores,
+        result,
+        updatedAt: Date.now()
+      }
+    );
+
+    showResultOnce(
+      result,
+      result.id
+    );
+
+  } else {
+    showResultOnce(
+      result,
+      result.id
+    );
+  }
+}
+
+function showResultOnce(result, id) {
+  if (
+    resultShownId === id
+  ) {
+    return;
+  }
+
+  resultShownId = id;
+
+  playSound(
+    result.winner === game.role
+      ? 'win'
+      : result.winner === 'DRAW'
+        ? 'bell'
+        : 'lose'
+  );
+
+  $('resultTitle')
+    .textContent =
+    result.winner === 'DRAW'
+      ? '🤝 تعادل'
+      : result.winner === game.role
+        ? '🏆 أنت كسبت الجولة'
+        : 'الجولة للخصم';
+
+  $('resultText')
+    .textContent =
+    result.cupWin
+      ? `انتهت الكأس — النتيجة ${result.scores.X} : ${result.scores.O}`
+      : `النتيجة ${result.scores.X} : ${result.scores.O} — اختر الجولة التالية أو أنهِ المباراة.`;
+
+  $('resultOverlay')
+    .classList
+    .remove('hidden');
+
+  $('acceptRematch')
+    .textContent =
+    result.cupWin
+      ? '🏆 كأس جديدة'
+      : '▶ الجولة التالية';
+}
+
+$('acceptRematch').onclick =
+  async () => {
+    if (
+      game.mode !== 'online'
+    ) {
+      $('resultOverlay')
+        .classList
+        .add('hidden');
+
+      resultShownId = null;
+
+      if (
+        game.scores.X >= game.targetWins ||
+        game.scores.O >= game.targetWins
+      ) {
+        game.scores = {
+          X: 0,
+          O: 0
+        };
+      }
+
+      resetLocalRound();
+
+      return;
+    }
+
+    if (!game.matchId) {
+      return;
+    }
+
+    $('acceptRematch')
+      .disabled = true;
+
+    await window.dbUpdate(
+      ref(
+        'matches/' +
+        game.matchId +
+        '/rematch'
+      ),
+      {
+        [game.role]: 'accepted',
+
+        id:
+          'rm_' +
+          Date.now().toString(36)
+      }
+    );
+  };
+
+$('exitResult').onclick =
+  () => endMatch('left');
+
+
+//#region ======================================================
+// 12 - إعادة الجولة وطلبات Restart و Rematch
+//#endregion ===================================================
+
+function resetLocalRound() {
+  game.board =
+    EMPTY_BOARD();
+
+  game.wins =
+    EMPTY_WINS();
+
+  game.target = null;
+
+  game.turn = 'X';
+
+  game.winner = null;
+
+  game.status = 'playing';
+
+  renderGame();
+
+  if (
+    game.turn === 'O'
+  ) {
+    scheduleAI();
+  }
+}
+
+function handleRematchState(data) {
+  const rematch =
+    data.rematch;
+
+  if (!rematch) {
+    return;
+  }
+
+  if (
+    rematch.X === 'accepted' &&
+    rematch.O === 'accepted' &&
+    game.role === 'X' &&
+    rematchHandledId !== rematch.id
+  ) {
+    rematchHandledId =
+      rematch.id;
+
+    const newScores =
+      data.result?.cupWin
+        ? {
+            X: 0,
+            O: 0
+          }
+        : game.scores;
+
+    window.dbUpdate(
+      ref(
+        'matches/' +
+        game.matchId
+      ),
+      {
+        board: EMPTY_BOARD(),
+        wins: EMPTY_WINS(),
+        target: null,
+        turn: 'X',
+        scores: newScores,
+        result: null,
+        rematch: null,
+        phase: 'active',
+        status: 'playing',
+        updatedAt: Date.now()
+      }
+    );
+  }
+
+  if (
+    rematch[game.role] === 'accepted'
+  ) {
+    $('acceptRematch')
+      .textContent =
+      '⏳ انتظار موافقة الخصم';
+  }
+
+  if (
+    rematch.X === 'declined' ||
+    rematch.O === 'declined'
+  ) {
+    closeGameUI(
+      'أحد اللاعبين أنهى المباراة.'
+    );
+  }
+}
+
+$('restartGame').onclick =
+  async () => {
+    if (
+      game.mode !== 'online'
+    ) {
+      resetLocalRound();
+      return;
+    }
+
+    if (
+      !game.matchId ||
+      game.status !== 'playing'
+    ) {
+      return;
+    }
+
+    const id =
+      'rs_' +
+      Date.now().toString(36);
+
+    await window.dbUpdate(
+      ref(
+        'matches/' +
+        game.matchId +
+        '/request'
+      ),
+      {
+        type: 'restart',
+        id,
+        from: game.role,
+        status: 'pending'
+      }
+    );
+
+    showToast(
+      'تم إرسال طلب Restart. لن تتغير اللوحة قبل موافقة الخصم.'
+    );
+  };
+
+function handleResetState(data) {
+  const request =
+    data.request;
+
+  if (!request) {
+    $('restartOverlay')
+      .classList
+      .add('hidden');
+
+    return;
+  }
+
+  if (
+    request.type === 'restart' &&
+    request.status === 'pending' &&
+    request.from !== game.role
+  ) {
+    $('restartText')
+      .textContent =
+      `${game.opponentName} يطلب إعادة الجولة الحالية.`;
+
+    $('restartOverlay')
+      .classList
+      .remove('hidden');
+  }
+
+  if (
+    request.type === 'restart' &&
+    request.status === 'declined' &&
+    request.from === game.role &&
+    resetHandledId !== request.id
+  ) {
+    resetHandledId =
+      request.id;
+
+    $('restartOverlay')
+      .classList
+      .add('hidden');
+
+    showToast(
+      'الخصم رفض إعادة الجولة',
+      'bad'
+    );
+
+    window.dbUpdate(
+      ref(
+        'matches/' +
+        game.matchId +
+        '/request'
+      ),
+      {
+        status: 'cleared'
+      }
+    );
+  }
+
+  if (
+    request.type === 'restart' &&
+    request.status === 'accepted' &&
+    game.role === 'X' &&
+    resetHandledId !== request.id
+  ) {
+    resetHandledId =
+      request.id;
+
+    window.dbUpdate(
+      ref(
+        'matches/' +
+        game.matchId
+      ),
+      {
+        board: EMPTY_BOARD(),
+        wins: EMPTY_WINS(),
+        target: null,
+        turn: 'X',
+        result: null,
+        rematch: null,
+        request: null,
+        phase: 'active',
+        status: 'playing',
+        updatedAt: Date.now()
+      }
+    );
+  }
+}
+
+$('acceptRestart').onclick =
+  async () => {
+    const id =
+      game.matchId;
+
+    if (!id) {
+      return;
+    }
+
+    $('restartOverlay')
+      .classList
+      .add('hidden');
+
+    await window.dbUpdate(
+      ref(
+        'matches/' +
+        id +
+        '/request'
+      ),
+      {
+        status: 'accepted'
+      }
+    );
+  };
+
+$('declineRestart').onclick =
+  async () => {
+    const id =
+      game.matchId;
+
+    if (!id) {
+      return;
+    }
+
+    $('restartOverlay')
+      .classList
+      .add('hidden');
+
+    await window.dbUpdate(
+      ref(
+        'matches/' +
+        id +
+        '/request'
+      ),
+      {
+        status: 'declined'
+      }
+    );
+  };
+
+$('endGame').onclick =
+  () => endMatch('left');
+
+$('leaveGame').onclick =
+  () => {
+    if (
+      game.mode === 'online'
+    ) {
+      endMatch('left');
+
+    } else {
+      clearTimeout(timers.ai);
+
+      game.matchId = null;
+      game.status = 'idle';
+
+      $('gameScreen')
+        .classList
+        .add('hidden');
+
+      $('app')
+        .classList
+        .remove('hidden');
+
+      navigate('play');
+    }
+  };
+
+$('disconnectLeave').onclick =
+  () => {
+    stopDisconnect();
+    endMatch('left');
+  };
+
+
+//#region ======================================================
+// 13 - إنهاء المباراة والاتصال والانقطاع 30 ثانية
+//#endregion ===================================================
+
+async function endMatch(reason) {
+  if (
+    game.mode === 'online' &&
+    game.matchId &&
+    dbReady()
+  ) {
+    try {
+      await window.dbUpdate(
+        ref(
+          'matches/' +
+          game.matchId
+        ),
+        {
+          closed: true,
+          status: 'closed',
+          closedReason: reason,
+          closedBy: game.role,
+          updatedAt: Date.now()
         }
-    }
-    if (bestMoves.length > 0) {
-        let move = bestMoves[Math.floor(Math.random() * bestMoves.length)];
-        triggerMove(move.b, move.c);
-    }
+      );
+    } catch {}
+  }
+
+  closeGameUI(
+    'تم إنهاء المباراة للطرفين.'
+  );
 }
 
-function checkSmallWin(cells) { if (!cells) return false; const wins = [[0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6]]; return wins.some(([x,y,z]) => cells[x] && cells[x] === cells[y] && cells[x] === cells[z]); }
-function checkUltimateWin() { const wins = [[0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6]]; return wins.some(([x,y,z]) => boardWins[x] && boardWins[x] !== 'DRAW' && boardWins[x] === boardWins[y] && boardWins[x] === boardWins[z]); }
+function handleConnectionFromMatch(data) {
+  if (
+    game.mode !== 'online'
+  ) {
+    return;
+  }
 
-function handleMatchEnd(winnerRole) {
-    const isMe = (gameMode === 'online-p2p') ? (winnerRole === myRole) : (winnerRole === 'X');
-    if (winnerRole === 'DRAW' || isMe) { playSound('win'); } else { playSound('lose'); }
-    stats.total++; let winnerName = 'No One'; let isCupWin = false;
-    if (winnerRole === 'DRAW') { userArenaPoints += 1; } else { scores[winnerRole]++; winnerName = (gameMode === 'online-p2p') ? (winnerRole === myRole ? playerName : opponentName) : `Player ${winnerRole}`; const isWin = (gameMode === 'online-p2p') ? (winnerRole === myRole) : (winnerRole === 'X'); if (isWin) { stats.wins++; userArenaPoints += 3; } else { stats.losses++; userArenaPoints = Math.max(0, userArenaPoints - 1); } isCupWin = scores[winnerRole] >= targetWins; }
-    scoreXEl.textContent = scores.X; scoreOEl.textContent = scores.O;
-    if (window.db) window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { points: userArenaPoints });
-    if (gameMode === 'online-p2p' && currentMatchId && window.db) { window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), { matchScores: scores, winnerData: { winnerRole, winnerName, isCupWin }, postMatch: { X: 'pending', O: 'pending' } }); } else { showEndModal(winnerRole, winnerName, isCupWin); }
+  if (
+    !listeners.opponent &&
+    game.opponentId
+  ) {
+    listeners.opponent =
+      window.dbOnValue(
+        ref(
+          'players/' +
+          game.opponentId +
+          '/status'
+        ),
+        snapshot => {
+          const status =
+            snapshot.val();
+
+          if (
+            status === 'offline'
+          ) {
+            startDisconnect();
+          } else {
+            stopDisconnect();
+          }
+        }
+      );
+  }
 }
 
-function showEndModal(winnerRole, winnerName, isCupWin) {
-    if (winnerRole === 'DRAW') { victoryTitle.textContent = `🤝 IT'S A DRAW! 🤝`; victoryText.textContent = `Both played well! (+1 pt)`; acceptRematchBtn.innerHTML = (targetWins > 1 && currentFormat !== 'infinity') ? '▶️ Ready for Next Round' : '🤝 Play Again'; } else {
-        const isMe = (gameMode === 'online-p2p') ? (winnerRole === myRole) : (winnerRole === 'X');
-        if (isCupWin) { victoryTitle.textContent = isMe ? `🏆 YOU WON THE CUP! 🏆` : `💔 ${winnerName} WON THE CUP! 💔`; victoryText.textContent = `Target: ${targetWins} Wins Reached!`; acceptRematchBtn.innerHTML = '🏆 Start New Cup'; declineRematchBtn.innerHTML = '🚪 Exit to Menu'; } else { victoryTitle.textContent = isMe ? `🎉 ROUND WON! 🎉` : `😢 ROUND LOST!`; victoryText.textContent = `Score: ${scores.X} - ${scores.O} | First to ${targetWins} wins!`; acceptRematchBtn.innerHTML = '▶️ Ready for Next Round'; declineRematchBtn.innerHTML = '🏳️ Forfeit & Exit'; }
+function startDisconnect() {
+  if (
+    timers.disconnect ||
+    game.status !== 'playing'
+  ) {
+    return;
+  }
+
+  timers.disconnectEndsAt =
+    Date.now() +
+    DISCONNECT_SECONDS * 1000;
+
+  $('disconnectOverlay')
+    .classList
+    .remove('hidden');
+
+  updateDisconnectText();
+
+  timers.disconnect =
+    setInterval(
+      updateDisconnectText,
+      250
+    );
+}
+
+function updateDisconnectText() {
+  const left =
+    Math.max(
+      0,
+      Math.ceil(
+        (
+          timers.disconnectEndsAt -
+          Date.now()
+        ) / 1000
+      )
+    );
+
+  $('disconnectCountdown')
+    .textContent = left;
+
+  if (left <= 0) {
+    stopDisconnect();
+
+    if (game.matchId) {
+      endMatch('timeout');
     }
-    victoryModal.style.display = 'flex';
+  }
 }
 
-function updateStatus() { turnIndicator.textContent = currentPlayer; }
-function startApp() { setupPresence(); checkPlayerName(); }
-if (window.db) { startApp(); } else { window.addEventListener('firebase-ready', startApp); }
+function stopDisconnect() {
+  if (timers.disconnect) {
+    clearInterval(
+      timers.disconnect
+    );
+
+    timers.disconnect = null;
+  }
+
+  timers.disconnectEndsAt = 0;
+
+  $('disconnectOverlay')
+    .classList
+    .add('hidden');
+}
+
+
+//#region ======================================================
+// 14 - Presence وحفظ الإحصائيات وتسجيل الدخول
+//#endregion ===================================================
+
+function registerPresence(
+  status = 'online'
+) {
+  if (
+    !dbReady() ||
+    !player.id
+  ) {
+    return;
+  }
+
+  const playerRef =
+    ref(
+      'players/' +
+      player.id
+    );
+
+  window.dbOnDisconnect(
+    playerRef
+  ).update({
+    status: 'offline',
+    lastActive: Date.now(),
+    currentSessionId:
+      sessionToken
+  });
+
+  window.dbUpdate(
+    playerRef,
+    {
+      name: player.name,
+      points: player.points,
+      stats: player.stats,
+      theme: player.theme,
+      status,
+      lastActive: Date.now(),
+      currentSessionId:
+        sessionToken
+    }
+  );
+}
+
+async function savePlayerStats() {
+  if (
+    dbReady() &&
+    player.id
+  ) {
+    await window.dbUpdate(
+      ref(
+        'players/' +
+        player.id
+      ),
+      {
+        points: player.points,
+        stats: player.stats,
+        lastActive: Date.now()
+      }
+    );
+  }
+}
+
+async function loginOrRegister() {
+  const name =
+    safeName(
+      $('authName').value
+    );
+
+  const pin =
+    $('authPin')
+      .value
+      .trim();
+
+  if (
+    !name ||
+    !/^[0-9]{4}$/.test(pin)
+  ) {
+    notice(
+      'بيانات غير صحيحة',
+      'اكتب اسم لاعب صالح وPIN مكونًا من 4 أرقام.'
+    );
+
+    return;
+  }
+
+  if (!dbReady()) {
+    notice(
+      'Firebase',
+      'قاعدة البيانات لم تجهز بعد.'
+    );
+
+    return;
+  }
+
+  const snapshot =
+    await window.dbGet(
+      ref('players')
+    );
+
+  const all =
+    snapshot.val() || {};
+
+  let foundId = null;
+  let found = null;
+
+  for (
+    const [id, user] of
+    Object.entries(all)
+  ) {
+    if (
+      user?.name === name
+    ) {
+      foundId = id;
+      found = user;
+      break;
+    }
+  }
+
+  const register =
+    $('authSubmit')
+      .dataset
+      .mode === 'register';
+
+  if (register) {
+    if (foundId) {
+      notice(
+        'الاسم مستخدم',
+        'اختر اسمًا آخر أو سجّل الدخول.'
+      );
+
+      return;
+    }
+
+    player.id =
+      'p_' +
+      Math.random()
+        .toString(36)
+        .slice(2, 11);
+
+    player.name = name;
+    player.pin = pin;
+
+    player.points = 10;
+
+    player.stats = {
+      total: 0,
+      wins: 0,
+      losses: 0
+    };
+
+    await window.dbSet(
+      ref(
+        'players/' +
+        player.id
+      ),
+      {
+        name,
+        pin,
+        points: 10,
+        stats: player.stats,
+        theme: player.theme,
+        status: 'online',
+        lastActive: Date.now(),
+        currentSessionId:
+          sessionToken
+      }
+    );
+
+  } else {
+    if (
+      !foundId ||
+      !found ||
+      String(found.pin) !== pin
+    ) {
+      notice(
+        'فشل الدخول',
+        'اسم المستخدم أو PIN غير صحيح.'
+      );
+
+      return;
+    }
+
+    player.id =
+      foundId;
+
+    player.name =
+      found.name;
+
+    player.pin =
+      found.pin;
+
+    player.points =
+      found.points ?? 10;
+
+    player.stats =
+      found.stats || {
+        total: 0,
+        wins: 0,
+        losses: 0
+      };
+
+    player.theme =
+      found.theme ||
+      player.theme;
+  }
+
+  persistSession();
+
+  setTheme(
+    player.theme
+  );
+
+  registerPresence(
+    'online'
+  );
+
+  $('authScreen')
+    .classList
+    .add('hidden');
+
+  $('app')
+    .classList
+    .remove('hidden');
+
+  watchChallenge();
+
+  resumeState();
+
+  renderPage();
+}
+
+
+//#region ======================================================
+// 15 - المصادقة واستعادة الجلسة واستعادة المباراة
+//#endregion ===================================================
+
+function setupAuth() {
+  $('authForm').onsubmit =
+    event => {
+      event.preventDefault();
+
+      playSound();
+
+      loginOrRegister();
+    };
+
+  $('authSwitch').onclick =
+    () => {
+      const register =
+        $('authSubmit')
+          .dataset
+          .mode !== 'register';
+
+      $('authSubmit')
+        .dataset
+        .mode =
+        register
+          ? 'register'
+          : 'login';
+
+      $('authSubmit')
+        .textContent =
+        register
+          ? 'إنشاء الحساب'
+          : 'دخول';
+
+      $('authTitle')
+        .textContent =
+        register
+          ? 'إنشاء حساب'
+          : 'تسجيل الدخول';
+
+      $('authHint')
+        .textContent =
+        register
+          ? 'اختر اسمًا وPIN من 4 أرقام.'
+          : 'ادخل باسم اللاعب ورقم الـPIN الخاص بك.';
+
+      $('authSwitch')
+        .textContent =
+        register
+          ? 'لديك حساب بالفعل؟ تسجيل الدخول'
+          : 'ليس لديك حساب؟ إنشاء حساب';
+    };
+
+  $('authSubmit')
+    .dataset
+    .mode = 'login';
+}
+
+async function resumeSession() {
+  setupAuth();
+
+  if (!dbReady()) {
+    return;
+  }
+
+  const raw =
+    localStorage.getItem(
+      SESSION_KEY
+    );
+
+  if (!raw) {
+    $('authScreen')
+      .classList
+      .remove('hidden');
+
+    return;
+  }
+
+  try {
+    const session =
+      JSON.parse(raw);
+
+    const snapshot =
+      await window.dbGet(
+        ref(
+          'players/' +
+          session.id
+        )
+      );
+
+    const user =
+      snapshot.val();
+
+    if (!user) {
+      clearSession();
+
+      $('authScreen')
+        .classList
+        .remove('hidden');
+
+      return;
+    }
+
+    player.id =
+      session.id;
+
+    player.name =
+      user.name;
+
+    player.pin =
+      user.pin || '';
+
+    player.points =
+      user.points ?? 10;
+
+    player.stats =
+      user.stats || {
+        total: 0,
+        wins: 0,
+        losses: 0
+      };
+
+    player.theme =
+      user.theme ||
+      player.theme;
+
+    sessionToken =
+      session.token ||
+      sessionToken;
+
+    setTheme(
+      player.theme
+    );
+
+    registerPresence(
+      'online'
+    );
+
+    $('authScreen')
+      .classList
+      .add('hidden');
+
+    watchChallenge();
+
+    resumeState();
+
+    renderPage();
+
+  } catch {
+    $('authScreen')
+      .classList
+      .remove('hidden');
+  }
+}
+
+async function resumeState() {
+  if (game.matchId) {
+    return;
+  }
+
+  const raw =
+    localStorage.getItem(
+      MATCH_KEY
+    );
+
+  if (
+    raw &&
+    dbReady()
+  ) {
+    try {
+      const session =
+        JSON.parse(raw);
+
+      const snapshot =
+        await window.dbGet(
+          ref(
+            'matches/' +
+            session.matchId
+          )
+        );
+
+      const data =
+        snapshot.val();
+
+      if (
+        data &&
+        data.status !== 'closed'
+      ) {
+        game = {
+          ...game,
+
+          matchId:
+            session.matchId,
+
+          mode: 'online',
+
+          role:
+            session.role,
+
+          opponentId:
+            session.opponentId,
+
+          opponentName:
+            session.opponentName ||
+            'Opponent',
+
+          format:
+            session.format ||
+            data.format ||
+            '1',
+
+          targetWins:
+            targetWins(
+              session.format ||
+              data.format ||
+              '1'
+            ),
+
+          status:
+            data.status
+        };
+
+        watchMatch(
+          session.matchId
+        );
+
+        return;
+      }
+
+      clearMatchSession();
+
+    } catch {
+      clearMatchSession();
+    }
+  }
+}
+
+
+//#region ======================================================
+// 16 - Ranking و Profile والإحصائيات
+//#endregion ===================================================
+
+async function loadLeaderboard() {
+  if (!dbReady()) {
+    return;
+  }
+
+  const element =
+    $('leaderboardRows');
+
+  element.innerHTML =
+    '<p class="hint">جاري التحميل...</p>';
+
+  const snapshot =
+    await window.dbGet(
+      ref('players')
+    );
+
+  const players =
+    Object.values(
+      snapshot.val() || {}
+    ).sort(
+      (a, b) =>
+        (b.points || 0) -
+        (a.points || 0)
+    );
+
+  element.innerHTML = '';
+
+  players
+    .slice(0, 100)
+    .forEach(
+      (user, index) => {
+        const row =
+          document.createElement('div');
+
+        row.className =
+          'rank-row';
+
+        row.innerHTML = `
+          <span>
+            #${index + 1}
+          </span>
+
+          <strong>
+            ${escapeHtml(user.name || 'Player')}
+          </strong>
+
+          <b>
+            ${user.points || 0}
+          </b>
+
+          <span>
+            ${user.stats?.wins || 0}
+          </span>
+        `;
+
+        element.appendChild(row);
+      }
+    );
+
+  if (!players.length) {
+    element.innerHTML =
+      '<p class="hint">لا يوجد لاعبين بعد.</p>';
+  }
+}
+
+function bindProfile() {
+  $('profileName')
+    .textContent =
+    player.name;
+
+  $('profileAvatar')
+    .textContent =
+    (player.name || 'X')
+      .slice(0, 1)
+      .toUpperCase();
+
+  $('profilePoints')
+    .textContent =
+    player.points;
+
+  $('profileTotal')
+    .textContent =
+    player.stats.total;
+
+  $('profileWins')
+    .textContent =
+    player.stats.wins;
+
+  $('profileLosses')
+    .textContent =
+    player.stats.losses;
+
+  $('themeSelect')
+    .value =
+    player.theme;
+
+  $('themeSelect').onchange =
+    event =>
+      setTheme(
+        event.target.value
+      );
+
+  $('logoutBtn').onclick =
+    async () => {
+      if (
+        player.id &&
+        dbReady()
+      ) {
+        await window.dbUpdate(
+          ref(
+            'players/' +
+            player.id
+          ),
+          {
+            status: 'offline'
+          }
+        );
+      }
+
+      clearSession();
+
+      location.reload();
+    };
+
+  $('deleteBtn').onclick =
+    async () => {
+      if (
+        !confirm(
+          'حذف الحساب نهائيًا؟'
+        )
+      ) {
+        return;
+      }
+
+      if (
+        player.id &&
+        dbReady()
+      ) {
+        await window.dbRemove(
+          ref(
+            'players/' +
+            player.id
+          )
+        );
+
+        await window.dbRemove(
+          ref(
+            'challenges/' +
+            player.id
+          )
+        );
+      }
+
+      clearSession();
+
+      location.reload();
+    };
+}
+
+
+//#region ======================================================
+// 17 - أزرار الواجهة والخلفية والمؤثرات
+//#endregion ===================================================
+
+$('mobileMenuBtn').onclick =
+  () => {
+    $('mobileNav')
+      .classList
+      .toggle('open');
+  };
+
+$('acceptChallenge').onclick =
+  acceptChallenge;
+
+$('declineChallenge').onclick =
+  declineChallenge;
+
+window.addEventListener(
+  'hashchange',
+  () => {
+    const route =
+      location.hash.replace(
+        '#',
+        ''
+      );
+
+    if (
+      [
+        'home',
+        'play',
+        'online',
+        'leaderboard',
+        'profile',
+        'rules'
+      ].includes(route)
+    ) {
+      currentRoute = route;
+
+      saveView();
+
+      renderPage();
+    }
+  }
+);
+
+
+//#region ------------------------------------------------------
+// 17.1 - الخلفية المتحركة
+//#endregion --------------------------------------------------
+
+const canvas =
+  $('bgCanvas');
+
+const ctx =
+  canvas.getContext('2d');
+
+let particles = [];
+
+function resizeCanvas() {
+  const d =
+    window.devicePixelRatio ||
+    1;
+
+  canvas.width =
+    innerWidth * d;
+
+  canvas.height =
+    innerHeight * d;
+
+  canvas.style.width =
+    innerWidth + 'px';
+
+  canvas.style.height =
+    innerHeight + 'px';
+
+  ctx.setTransform(
+    d,
+    0,
+    0,
+    d,
+    0,
+    0
+  );
+
+  particles =
+    Array.from(
+      {
+        length: 26
+      },
+      () => ({
+        x:
+          Math.random() *
+          innerWidth,
+
+        y:
+          Math.random() *
+          innerHeight,
+
+        s:
+          Math.random() * 2 +
+          0.5,
+
+        a:
+          Math.random() * 0.25 +
+          0.04,
+
+        t:
+          Math.random() > 0.5
+            ? 'X'
+            : 'O'
+      })
+    );
+}
+
+function drawBg() {
+  ctx.clearRect(
+    0,
+    0,
+    innerWidth,
+    innerHeight
+  );
+
+  const primary =
+    getComputedStyle(
+      document.documentElement
+    )
+      .getPropertyValue(
+        '--primary'
+      )
+      .trim() ||
+    '#22d3ee';
+
+  ctx.fillStyle =
+    primary;
+
+  particles.forEach(
+    particle => {
+      particle.y -=
+        particle.s;
+
+      if (
+        particle.y < -30
+      ) {
+        particle.y =
+          innerHeight + 30;
+      }
+
+      ctx.globalAlpha =
+        particle.a;
+
+      ctx.font =
+        '900 22px system-ui';
+
+      ctx.fillText(
+        particle.t,
+        particle.x,
+        particle.y
+      );
+    }
+  );
+
+  ctx.globalAlpha = 1;
+
+  requestAnimationFrame(
+    drawBg
+  );
+}
+
+addEventListener(
+  'resize',
+  resizeCanvas
+);
+
+resizeCanvas();
+drawBg();
+
+
+//#region ======================================================
+// 18 - تشغيل التطبيق والتهيئة النهائية
+//#endregion ===================================================
+
+function start() {
+  setupAuth();
+
+  if (location.hash) {
+    const route =
+      location.hash.slice(1);
+
+    if (
+      [
+        'home',
+        'play',
+        'online',
+        'leaderboard',
+        'profile',
+        'rules'
+      ].includes(route)
+    ) {
+      currentRoute =
+        route;
+    }
+  }
+
+  if (window.db) {
+    resumeSession();
+
+  } else {
+    window.addEventListener(
+      'firebase-ready',
+      resumeSession,
+      {
+        once: true
+      }
+    );
+  }
+}
+
+start();
+
+
+//#endregion ===================================================
+
+})();

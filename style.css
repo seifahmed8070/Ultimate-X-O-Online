@@ -1,42 +1,43 @@
-/* --- تعريف ثيمات اللعبة والـ Variables (بخلفية شبه شفافة لتظهر الخلفية المتحركة خلفها) --- */
+/* --- تعريف ثيمات اللعبة والـ Variables --- */
+/* قمنا بتقليل الشفافية في الخلفية المظلمة (bg-color) والصناديق (card-bg) لتبرز الخلفية المتحركة بقوة */
 .theme-cyberpunk {
-    --bg-color: rgba(3, 7, 18, 0.85);
-    --card-bg: rgba(15, 23, 42, 0.82);
+    --bg-color: rgba(3, 7, 18, 0.5);
+    --card-bg: rgba(15, 23, 42, 0.65);
     --primary: #06b6d4;
     --secondary: #14b8a6;
     --accent: #10b981;
     --text-color: #f8fafc;
-    --border-color: rgba(6, 182, 212, 0.35);
+    --border-color: rgba(6, 182, 212, 0.4);
 }
 
 .theme-matrix {
-    --bg-color: rgba(2, 44, 34, 0.85);
-    --card-bg: rgba(2, 44, 34, 0.85);
+    --bg-color: rgba(2, 44, 34, 0.5);
+    --card-bg: rgba(2, 44, 34, 0.7);
     --primary: #22c55e;
     --secondary: #10b981;
     --accent: #84cc16;
     --text-color: #dcfce7;
-    --border-color: rgba(34, 197, 94, 0.35);
+    --border-color: rgba(34, 197, 94, 0.4);
 }
 
 .theme-obsidian {
-    --bg-color: rgba(9, 9, 11, 0.85);
-    --card-bg: rgba(24, 24, 27, 0.85);
+    --bg-color: rgba(9, 9, 11, 0.6);
+    --card-bg: rgba(24, 24, 27, 0.75);
     --primary: #f43f5e;
     --secondary: #fb7185;
     --accent: #e11d48;
     --text-color: #fafafa;
-    --border-color: rgba(244, 63, 94, 0.35);
+    --border-color: rgba(244, 63, 94, 0.4);
 }
 
 .theme-vaporwave {
-    --bg-color: rgba(46, 16, 101, 0.85);
-    --card-bg: rgba(46, 16, 101, 0.85);
+    --bg-color: rgba(46, 16, 101, 0.5);
+    --card-bg: rgba(46, 16, 101, 0.7);
     --primary: #ec4899;
     --secondary: #d946ef;
     --accent: #8b5cf6;
     --text-color: #fce7f3;
-    --border-color: rgba(236, 72, 153, 0.35);
+    --border-color: rgba(236, 72, 153, 0.4);
 }
 
 /* --- الهيكل الأساسي للصفحة --- */
@@ -47,7 +48,7 @@ body.app-shell {
     transition: background-color 0.4s ease;
 }
 
-/* --- تنسيق الـ Canvas الخلفي المتحرك ليشمل الشاشة بالكامل خلف كل شيء --- */
+/* --- تنسيق الـ Canvas الخلفي المتحرك ليشمل الشاشة بالكامل بقوة --- */
 #bgCanvas {
     position: fixed;
     top: 0;
@@ -75,8 +76,9 @@ body.app-shell {
 .modal-box {
     background-color: var(--card-bg);
     border-color: var(--border-color);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    /* تقليل الـ blur بيخلي الأشكال اللي بتتحرك ورا تبان حادة وواضحة جداً */
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 
 .brand-title {
@@ -84,7 +86,7 @@ body.app-shell {
 }
 
 .sub-box {
-    background: rgba(0, 0, 0, 0.45);
+    background: rgba(0, 0, 0, 0.4);
     border-color: var(--border-color);
 }
 
@@ -96,7 +98,7 @@ body.app-shell {
 
 .action-btn:hover {
     opacity: 0.9;
-    transform: translateY(-1px);
+    transform: translateY(-2px);
 }
 
 .input-field {
@@ -107,13 +109,13 @@ body.app-shell {
 
 .cell-btn {
     background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     color: var(--text-color);
     transition: all 0.15s ease;
 }
 
 .cell-btn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.2);
     border-color: var(--primary);
 }
 
@@ -124,29 +126,29 @@ body.app-shell {
 
 .active-local-board {
     border-color: var(--primary);
-    box-shadow: 0 0 22px var(--border-color);
+    box-shadow: 0 0 20px var(--border-color);
 }
 
 .my-turn-local {
     border-color: var(--accent);
-    box-shadow: 0 0 22px rgba(16, 185, 129, 0.45);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
 }
 
 .waiting-local {
-    border-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.15);
 }
 
 .overlay-bg {
-    background: rgba(0, 0, 0, 0.9);
+    background: rgba(0, 0, 0, 0.85);
     color: var(--primary);
-    backdrop-filter: blur(6px);
+    backdrop-filter: blur(4px);
 }
 
 .header-bar, .control-panel, .main-board-wrapper, .theme-select {
     background-color: var(--card-bg);
     border-color: var(--border-color);
     color: var(--text-color);
-    backdrop-filter: blur(14px);
+    backdrop-filter: blur(10px);
 }
 
 .score-x {

@@ -51,6 +51,7 @@ if (!victoryMenuBtn && victoryButtonContainer) {
 
 const nameModal = document.getElementById('nameModal');
 const playerNameInput = document.getElementById('playerNameInput');
+const playerPinInput = document.getElementById('playerPinInput');
 const saveNameBtn = document.getElementById('saveNameBtn');
 const menuUsername = document.getElementById('menuUsername');
 const userPoints = document.getElementById('userPoints');
@@ -69,6 +70,7 @@ const challengeTitle = document.getElementById('challengeTitle');
 const challengeText = document.getElementById('challengeText');
 const acceptChallengeBtn = document.getElementById('acceptChallengeBtn');
 const rejectChallengeBtn = document.getElementById('rejectChallengeBtn');
+const cancelChallengeBtn = document.getElementById('cancelChallengeBtn');
 
 const rematchModal = document.getElementById('rematchModal');
 const acceptRematchBtn = document.getElementById('acceptRematchBtn');
@@ -79,11 +81,13 @@ const statsMenuBtn = document.getElementById('statsMenuBtn');
 const closeStatsBtn = document.getElementById('closeStatsBtn');
 const statPoints = document.getElementById('statPoints');
 const statTotal = document.getElementById('statTotal');
+const profileNameDisplay = document.getElementById('profileNameDisplay');
+const deleteAccountBtn = document.getElementById('deleteAccountBtn');
 
 const leaveRoomBtn = document.getElementById('leaveRoomBtn');
 const matchFormatSelect = document.getElementById('matchFormatSelect');
 
-// --- مودال مخصص داخل الموقع بدلاً من رسائل جوجل المنفرة (Alert / Confirm) ---
+// مودال مخصص داخل الموقع بدلاً من رسائل جوجل
 let customModal = document.createElement('div');
 customModal.id = 'customModal';
 customModal.className = 'fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4 backdrop-blur-md';
@@ -130,20 +134,11 @@ function showCustomConfirm(title, text, onConfirm, onCancel = null) {
         if (onCancel) onCancel();
     };
 }
-// -------------------------------------------------------------
 
-const resetDataBtn = document.createElement('button');
-resetDataBtn.id = 'resetDataBtn';
-resetDataBtn.className = 'w-full bg-rose-600/85 hover:bg-rose-600 text-white font-bold py-2.5 rounded-xl text-sm mb-2 shadow-lg transition-all';
-resetDataBtn.textContent = '🗑️ Reset Local Data & Profile';
-
-if (statsModal) {
-    statsModal.querySelector('.modal-box').insertBefore(resetDataBtn, closeStatsBtn);
-}
-
-resetDataBtn.addEventListener('click', async () => {
+// زرار حذف الحساب النهائي من السيرفر
+deleteAccountBtn.addEventListener('click', () => {
     playSound('click');
-    showCustomConfirm('Reset Data', 'Are you sure you want to reset your local data and name?', async () => {
+    showCustomConfirm('Delete Account', 'Are you sure you want to delete your account permanently? This will remove your stats and rank from the server.', async () => {
         if (window.db && playerId) {
             try {
                 await window.dbRemove(window.dbRef(window.db, 'players/' + playerId));
@@ -153,7 +148,7 @@ resetDataBtn.addEventListener('click', async () => {
             }
         }
         localStorage.clear();
-        showCustomAlert('Success', 'Data cleared successfully! The page will reload.', () => location.reload());
+        showCustomAlert('Account Deleted', 'Your account has been wiped from the server. Page will reload.', () => location.reload());
     });
 });
 
@@ -183,6 +178,7 @@ let boardWins = Array(9).fill(null);
 let boardStates = Array(9).fill().map(() => Array(9).fill(''));
 
 let playerName = localStorage.getItem('ultimate_player_name') || '';
+let playerPin = localStorage.getItem('ultimate_player_pin') || '';
 let playerId = localStorage.getItem('ultimate_player_id') || 'p_' + Math.random().toString(36).substring(2, 9);
 localStorage.setItem('ultimate_player_id', playerId);
 
@@ -221,6 +217,7 @@ function getTargetWins(formatStr) {
 if (statsMenuBtn) {
     statsMenuBtn.addEventListener('click', () => {
         playSound('click');
+        profileNameDisplay.textContent = playerName;
         statPoints.textContent = userArenaPoints;
         statTotal.textContent = stats.total;
         fetchGlobalLeaderboard();
@@ -249,6 +246,7 @@ function registerOnlinePresence(status = 'online') {
     window.dbOnDisconnect(userRef).remove().then(() => {
         window.dbSet(userRef, { 
             name: playerName, 
+            pin: playerPin,
             points: userArenaPoints, 
             status: status, 
             lastActive: Date.now() 
@@ -261,13 +259,17 @@ function registerOnlinePresence(status = 'online') {
             const data = snapshot.val();
             if (data && data.status === 'pending') {
                 showIncomingChallenge(data);
+            } else if (data && data.status === 'cancelled') {
+                challengeModal.style.display = 'none';
+                showCustomAlert('Challenge Cancelled', 'The challenge was cancelled by the sender.');
+                window.dbRemove(challengeRef);
             }
         });
     }
 }
 
 function checkPlayerName() {
-    if (!playerName) {
+    if (!playerName || !playerPin) {
         nameModal.style.display = 'flex';
         mainMenu.style.display = 'flex';
     } else {
@@ -309,16 +311,19 @@ function checkPlayerName() {
 saveNameBtn.addEventListener('click', () => {
     playSound('click');
     const name = playerNameInput.value.trim();
-    if (name) {
+    const pin = playerPinInput.value.trim();
+    if (name && pin.length === 4) {
         playerName = name;
+        playerPin = pin;
         localStorage.setItem('ultimate_player_name', playerName);
+        localStorage.setItem('ultimate_player_pin', playerPin);
         nameModal.style.display = 'none';
         mainMenu.style.display = 'flex';
         menuUsername.textContent = playerName;
         userPoints.textContent = userArenaPoints;
         registerOnlinePresence();
     } else {
-        showCustomAlert('Error', 'Please enter your name!');
+        showCustomAlert('Error', 'Please enter your name and a valid 4-digit PIN!');
     }
 });
 
@@ -387,10 +392,13 @@ function fetchOnlinePlayers() {
     });
 }
 
+let outgoingTargetId = null;
+
 function sendChallenge(targetId, targetName) {
     playSound('click');
     myRole = 'X';
     opponentName = targetName;
+    outgoingTargetId = targetId;
     currentMatchId = playerId < targetId ? playerId + '_' + targetId : targetId + '_' + playerId;
     
     localStorage.setItem('ultimate_match_id', currentMatchId);
@@ -425,6 +433,7 @@ function sendChallenge(targetId, targetName) {
     challengeTitle.textContent = `Waiting for ${targetName}...`;
     challengeText.textContent = `Challenge sent! Waiting for them to accept.`;
     document.getElementById('challengeActionButtons').style.display = 'none';
+    cancelChallengeBtn.classList.remove('hidden');
     challengeModal.style.display = 'flex';
     gameModeBadge.textContent = `Online vs ${targetName}`;
 
@@ -436,6 +445,7 @@ function sendChallenge(targetId, targetName) {
         if (data && data.status === 'declined') {
             showCustomAlert('Challenge Declined', `${targetName} declined your challenge.`);
             challengeModal.style.display = 'none';
+            cancelChallengeBtn.classList.add('hidden');
             onlineLobbyModal.style.display = 'flex';
             window.dbRemove(window.dbRef(window.db, 'matches/' + currentMatchId));
             if (myChallengeStatusListener) {
@@ -447,6 +457,20 @@ function sendChallenge(targetId, targetName) {
 
     listenToMatch(currentMatchId);
 }
+
+cancelChallengeBtn.onclick = () => {
+    playSound('click');
+    if (outgoingTargetId) {
+        const targetChallengeRef = window.dbRef(window.db, 'challenges/' + outgoingTargetId);
+        window.dbUpdate(targetChallengeRef, { status: 'cancelled' });
+    }
+    challengeModal.style.display = 'none';
+    cancelChallengeBtn.classList.add('hidden');
+    if (currentMatchId) {
+        window.dbRemove(window.dbRef(window.db, 'matches/' + currentMatchId));
+    }
+    onlineLobbyModal.style.display = 'flex';
+};
 
 let activeChallengeData = null;
 
@@ -460,6 +484,7 @@ function showIncomingChallenge(data) {
     challengeTitle.textContent = `Challenge from ${data.fromName}!`;
     challengeText.textContent = `${data.fromName} wants to play a [${formatLabel}] Cup with you.`;
     document.getElementById('challengeActionButtons').style.display = 'flex';
+    cancelChallengeBtn.classList.add('hidden');
     challengeModal.style.display = 'flex';
 }
 
@@ -626,6 +651,7 @@ function listenToMatch(matchId) {
                 showEndModal(data.winnerData.winnerRole, data.winnerData.winnerName, data.winnerData.isCupWin);
             }
             
+            // ظهور نافذة الـ Rematch حصرياً "جوه الروم" للطرف الآخر
             if (data.rematch) {
                 if (data.rematch.status === 'pending' && data.rematch.from !== myRole) {
                     rematchModal.style.display = 'flex';

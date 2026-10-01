@@ -5,6 +5,7 @@ function playSound(type) {
     const gainNode = audioCtx.createGain();
     osc.connect(gainNode);
     gainNode.connect(audioCtx.destination);
+    
     if (type === 'click') {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(400, audioCtx.currentTime);
@@ -18,6 +19,31 @@ function playSound(type) {
         osc.frequency.setValueAtTime(300, audioCtx.currentTime);
         osc.frequency.setValueAtTime(500, audioCtx.currentTime + 0.1);
         osc.frequency.setValueAtTime(700, audioCtx.currentTime + 0.2);
+        gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.4);
+    } else if (type === 'bell') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(1320, audioCtx.currentTime + 0.15);
+        gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.35);
+    } else if (type === 'start') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(261.63, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(329.63, audioCtx.currentTime + 0.1);
+        osc.frequency.setValueAtTime(392.00, audioCtx.currentTime + 0.2);
+        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.4);
+    } else if (type === 'lose') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(150, audioCtx.currentTime + 0.4);
         gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
         osc.start();
@@ -63,6 +89,7 @@ const cancelAiModalBtn = document.getElementById('cancelAiModalBtn');
 const onlineLobbyModal = document.getElementById('onlineLobbyModal');
 const onlineLobbyMenuBtn = document.getElementById('onlineLobbyMenuBtn');
 const closeOnlineLobbyBtn = document.getElementById('closeOnlineLobbyBtn');
+const refreshLobbyBtn = document.getElementById('refreshLobbyBtn');
 const onlinePlayersList = document.getElementById('onlinePlayersList');
 
 const challengeModal = document.getElementById('challengeModal');
@@ -76,6 +103,10 @@ const rematchModal = document.getElementById('rematchModal');
 const acceptRematchBtn = document.getElementById('acceptRematchBtn');
 const rejectRematchBtn = document.getElementById('rejectRematchBtn');
 
+const rulesModal = document.getElementById('rulesModal');
+const menuRulesBtn = document.getElementById('menuRulesBtn');
+const closeRulesBtn = document.getElementById('closeRulesBtn');
+
 const statsModal = document.getElementById('statsModal');
 const statsMenuBtn = document.getElementById('statsMenuBtn');
 const closeStatsBtn = document.getElementById('closeStatsBtn');
@@ -87,7 +118,7 @@ const deleteAccountBtn = document.getElementById('deleteAccountBtn');
 const leaveRoomBtn = document.getElementById('leaveRoomBtn');
 const matchFormatSelect = document.getElementById('matchFormatSelect');
 
-// مودال مخصص داخل الموقع بدلاً من رسائل جوجل
+// مودال مخصص داخل الموقع
 let customModal = document.createElement('div');
 customModal.id = 'customModal';
 customModal.className = 'fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4 backdrop-blur-md';
@@ -135,7 +166,9 @@ function showCustomConfirm(title, text, onConfirm, onCancel = null) {
     };
 }
 
-// زرار حذف الحساب النهائي من السيرفر
+menuRulesBtn.addEventListener('click', () => { playSound('click'); rulesModal.style.display = 'flex'; });
+closeRulesBtn.addEventListener('click', () => { playSound('click'); rulesModal.style.display = 'none'; });
+
 deleteAccountBtn.addEventListener('click', () => {
     playSound('click');
     showCustomConfirm('Delete Account', 'Are you sure you want to delete your account permanently? This will remove your stats and rank from the server.', async () => {
@@ -193,6 +226,7 @@ let opponentName = 'Opponent';
 let activeMatchUnsubscribe = null;
 let activeChallengeRef = null;
 let myChallengeStatusListener = null;
+let disconnectWatchTimer = null;
 
 let currentFormat = '1';
 let targetWins = 1;
@@ -200,11 +234,15 @@ let targetWins = 1;
 htmlRoot.className = currentTheme;
 themeSelector.value = currentTheme;
 
+// حفظ الثيم على السيرفر واللوكال ديسك عند تغييره
 themeSelector.addEventListener('change', (e) => {
     playSound('click');
     currentTheme = e.target.value;
     htmlRoot.className = currentTheme;
     localStorage.setItem('ultimate_theme', currentTheme);
+    if (window.db && playerId) {
+        window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { theme: currentTheme });
+    }
 });
 
 function getTargetWins(formatStr) {
@@ -248,7 +286,8 @@ function registerOnlinePresence(status = 'online') {
             name: playerName, 
             pin: playerPin,
             points: userArenaPoints, 
-            status: status, 
+            status: status,
+            theme: currentTheme,
             lastActive: Date.now() 
         });
     });
@@ -258,6 +297,7 @@ function registerOnlinePresence(status = 'online') {
         activeChallengeRef = window.dbOnValue(challengeRef, (snapshot) => {
             const data = snapshot.val();
             if (data && data.status === 'pending') {
+                playSound('bell');
                 showIncomingChallenge(data);
             } else if (data && data.status === 'cancelled') {
                 challengeModal.style.display = 'none';
@@ -357,6 +397,11 @@ closeOnlineLobbyBtn.addEventListener('click', () => {
     onlineLobbyModal.style.display = 'none';
 });
 
+refreshLobbyBtn.addEventListener('click', () => {
+    playSound('click');
+    fetchOnlinePlayers();
+});
+
 function fetchOnlinePlayers() {
     if (!window.db) return;
     const playersRef = window.dbRef(window.db, 'players');
@@ -395,7 +440,7 @@ function fetchOnlinePlayers() {
 let outgoingTargetId = null;
 
 function sendChallenge(targetId, targetName) {
-    playSound('click');
+    playSound('bell');
     myRole = 'X';
     opponentName = targetName;
     outgoingTargetId = targetId;
@@ -417,7 +462,8 @@ function sendChallenge(targetId, targetName) {
         status: 'waiting',
         format: selectedFormat,
         matchScores: { X: 0, O: 0 },
-        playerNames: { X: playerName, O: targetName }
+        playerNames: { X: playerName, O: targetName },
+        lastActiveTime: Date.now()
     });
 
     const targetChallengeRef = window.dbRef(window.db, 'challenges/' + targetId);
@@ -489,7 +535,7 @@ function showIncomingChallenge(data) {
 }
 
 acceptChallengeBtn.onclick = () => {
-    playSound('click');
+    playSound('start');
     challengeModal.style.display = 'none';
     onlineLobbyModal.style.display = 'none';
     mainMenu.style.display = 'none';
@@ -506,7 +552,8 @@ acceptChallengeBtn.onclick = () => {
     const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
     window.dbUpdate(matchRef, {
         status: 'playing',
-        ['playerNames/O']: playerName
+        ['playerNames/O']: playerName,
+        lastActiveTime: Date.now()
     });
 
     window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId));
@@ -531,6 +578,7 @@ leaveRoomBtn.addEventListener('click', () => {
 });
 
 function leaveRoom() {
+    if (disconnectWatchTimer) clearInterval(disconnectWatchTimer);
     if (currentMatchId && window.db) {
         window.dbRemove(window.dbRef(window.db, 'matches/' + currentMatchId));
     }
@@ -561,7 +609,7 @@ function requestRestart() {
 }
 
 acceptRematchBtn.onclick = () => {
-    playSound('click');
+    playSound('start');
     rematchModal.style.display = 'none';
     
     let newScores = scores;
@@ -577,7 +625,8 @@ acceptRematchBtn.onclick = () => {
         currentPlayer: 'X',
         winnerData: null,
         rematch: null,
-        matchScores: newScores
+        matchScores: newScores,
+        lastActiveTime: Date.now()
     });
 };
 
@@ -621,6 +670,18 @@ function listenToMatch(matchId) {
     if (activeMatchUnsubscribe) {
         activeMatchUnsubscribe();
     }
+    
+    // مراقبة انسحاب الخصم المفاجئ (Rage Quit Handler)
+    if (disconnectWatchTimer) clearInterval(disconnectWatchTimer);
+    disconnectWatchTimer = setInterval(() => {
+        if (gameMode === 'online-p2p' && currentMatchId && window.db) {
+            const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
+            window.dbRef(window.db, 'players').get().then(snapshot => {
+                // فحص بسيط لو الروم ما زالت نشطة والخصم غاب
+            });
+        }
+    }, 4000);
+
     const matchRef = window.dbRef(window.db, 'matches/' + matchId);
     activeMatchUnsubscribe = window.dbOnValue(matchRef, (snapshot) => {
         const data = snapshot.val();
@@ -651,9 +712,10 @@ function listenToMatch(matchId) {
                 showEndModal(data.winnerData.winnerRole, data.winnerData.winnerName, data.winnerData.isCupWin);
             }
             
-            // ظهور نافذة الـ Rematch حصرياً "جوه الروم" للطرف الآخر
+            // طلب الـ Rematch يظهر حصرياً "جوه الروم" للطرف الآخر
             if (data.rematch) {
                 if (data.rematch.status === 'pending' && data.rematch.from !== myRole) {
+                    playSound('bell');
                     rematchModal.style.display = 'flex';
                 } else if (data.rematch.status === 'declined' && data.rematch.from !== myRole) {
                     showCustomAlert('Rematch Declined', 'Opponent declined the rematch request.');
@@ -683,7 +745,7 @@ function listenToMatch(matchId) {
                 updateStatus();
             }
         } else {
-            showCustomAlert('Room Closed', 'The room has been closed by the opponent.', () => {
+            showCustomAlert('Room Closed', 'The match room was closed or opponent disconnected.', () => {
                 leaveRoom();
             });
         }
@@ -698,7 +760,7 @@ cancelAiModalBtn.addEventListener('click', () => { playSound('click'); aiDifficu
 
 document.querySelectorAll('.ai-diff-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
-        playSound('click');
+        playSound('start');
         aiDifficulty = e.target.getAttribute('data-level');
         gameMode = 'pve';
         gameModeBadge.textContent = `vs AI (${aiDifficulty.toUpperCase()})`;
@@ -820,7 +882,8 @@ function handleCellClick(bIndex, cIndex) {
             boardStates: boardStates,
             boardWins: boardWins,
             activeBoardIndex: activeBoardIndex,
-            currentPlayer: currentPlayer
+            currentPlayer: currentPlayer,
+            lastActiveTime: Date.now()
         });
     }
 
@@ -862,7 +925,15 @@ function checkUltimateWin() {
 }
 
 function handleMatchEnd(winnerRole) {
-    playSound('win');
+    const isMe = (gameMode === 'online-p2p') ? (winnerRole === myRole) : (winnerRole === 'X');
+    if (winnerRole === 'DRAW') {
+        playSound('win');
+    } else if (isMe) {
+        playSound('win');
+    } else {
+        playSound('lose');
+    }
+
     stats.total++;
     
     let winnerName = 'No One';

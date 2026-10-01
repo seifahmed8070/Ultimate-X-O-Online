@@ -51,6 +51,65 @@ function playSound(type) {
     }
 }
 
+// --- كود الخلفية المتحركة (Canvas Background Animation للـ X و O) ---
+const bgCanvas = document.getElementById('bgCanvas');
+const bgCtx = bgCanvas.getContext('2d');
+let bgParticles = [];
+
+function resizeBgCanvas() {
+    bgCanvas.width = window.innerWidth;
+    bgCanvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeBgCanvas);
+resizeBgCanvas();
+
+for (let i = 0; i < 30; i++) {
+    bgParticles.push({
+        x: Math.random() * bgCanvas.width,
+        y: Math.random() * bgCanvas.height,
+        size: Math.floor(Math.random() * 30) + 18,
+        speedY: (Math.random() * 0.8) + 0.3,
+        speedX: (Math.random() - 0.5) * 0.4,
+        char: Math.random() > 0.5 ? 'X' : 'O',
+        alpha: Math.random() * 0.25 + 0.08,
+        rotation: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 0.015
+    });
+}
+
+function animateBgCanvas() {
+    bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+    
+    // جلب لون الثيم الأساسي الحالي أوتوماتيك
+    const computedStyle = getComputedStyle(document.documentElement);
+    const primaryColor = computedStyle.getPropertyValue('--primary').trim() || '#06b6d4';
+
+    bgParticles.forEach(p => {
+        p.y -= p.speedY;
+        p.x += p.speedX;
+        p.rotation += p.rotSpeed;
+
+        if (p.y < -50) {
+            p.y = bgCanvas.height + 50;
+            p.x = Math.random() * bgCanvas.width;
+        }
+
+        bgCtx.save();
+        bgCtx.translate(p.x, p.y);
+        bgCtx.rotate(p.rotation);
+        bgCtx.font = `bold ${p.size}px sans-serif`;
+        bgCtx.fillStyle = primaryColor;
+        bgCtx.globalAlpha = p.alpha;
+        bgCtx.textAlign = 'center';
+        bgCtx.textBaseline = 'middle';
+        bgCtx.fillText(p.char, 0, 0);
+        bgCtx.restore();
+    });
+
+    requestAnimationFrame(animateBgCanvas);
+}
+animateBgCanvas();
+
 const ultimateBoard = document.getElementById('ultimateBoard');
 const turnIndicator = document.getElementById('turnIndicator');
 const resetBtn = document.getElementById('resetBtn');
@@ -110,12 +169,11 @@ const logoutBtn = document.getElementById('logoutBtn');
 const leaveRoomBtn = document.getElementById('leaveRoomBtn');
 const matchFormatSelect = document.getElementById('matchFormatSelect');
 
-// مودال مخصص داخل الموقع
 let customModal = document.createElement('div');
 customModal.id = 'customModal';
 customModal.className = 'fixed inset-0 bg-black/85 z-50 hidden items-center justify-center p-4 backdrop-blur-xl';
 customModal.innerHTML = `
-    <div class="modal-box border border-cyan-500/40 bg-slate-950/95 p-8 rounded-3xl max-w-sm w-full text-center shadow-[0_0_50px_rgba(6,182,212,0.25)] flex flex-col gap-4">
+    <div class="modal-box border border-cyan-500/40 bg-slate-950/95 p-8 rounded-3xl max-w-sm w-full text-center shadow-[0_0_50px_rgba(6,182,212,0.25)] flex flex-col gap-4 relative z-10">
         <h2 id="customModalTitle" class="font-black text-xl text-cyan-400">Notice</h2>
         <p id="customModalText" class="text-sm text-slate-300 leading-relaxed"></p>
         <div id="customModalButtons" class="flex gap-2 mt-2">
@@ -161,13 +219,12 @@ function showCustomConfirm(title, text, onConfirm, onCancel = null) {
 menuRulesBtn.addEventListener('click', () => { playSound('click'); rulesModal.style.display = 'flex'; });
 closeRulesBtn.addEventListener('click', () => { playSound('click'); rulesModal.style.display = 'none'; });
 
-// زر تسجيل الخروج (يحذف السيشن ويجبر المستخدم على تسجيل الدخول مجدداً)
 logoutBtn.addEventListener('click', () => {
     playSound('click');
     showCustomConfirm('Logout', 'Are you sure you want to sign out?', async () => {
         if (window.db && playerId) {
             try {
-                await window.dbRemove(window.dbRef(window.db, 'players/' + playerId));
+                await window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { status: 'offline' });
             } catch (e) {
                 console.log(e);
             }
@@ -218,7 +275,6 @@ let activeBoardIndex = null;
 let boardWins = Array(9).fill(null); 
 let boardStates = Array(9).fill().map(() => Array(9).fill(''));
 
-// منع الاحتفاظ ببيانات الدخول عند التحديث (لا يتم تخزين الـ credentials في الـ localStorage)
 let playerName = '';
 let playerPin = '';
 let playerId = null;
@@ -289,7 +345,11 @@ function registerOnlinePresence(status = 'online') {
     if (!window.db || !playerName || !playerId) return;
     const userRef = window.dbRef(window.db, 'players/' + playerId);
     
-    window.dbOnDisconnect(userRef).remove().then(() => {
+    // التعديل الهام هنا: عند الخروج يتم تحديث الحالة إلى أوفلاين فقط بدلاً من حذف الحساب تماماً لضمان ثبات الترتيب العام
+    window.dbOnDisconnect(userRef).update({ 
+        status: 'offline',
+        lastActive: Date.now() 
+    }).then(() => {
         window.dbSet(userRef, { 
             name: playerName, 
             pin: playerPin,
@@ -301,7 +361,6 @@ function registerOnlinePresence(status = 'online') {
         });
     });
 
-    // مراقبة الدخول من جهاز آخر (Single Device Enforcement)
     if (sessionListenerRef) sessionListenerRef();
     sessionListenerRef = window.dbOnValue(window.dbRef(window.db, 'players/' + playerId + '/currentSessionId'), (snap) => {
         const remoteSession = snap.val();
@@ -328,7 +387,6 @@ function registerOnlinePresence(status = 'online') {
     }
 }
 
-// --- نظام تبديل الشاشات (تسجيل الدخول / إنشاء حساب) والتحقق من السيرفر ---
 let isRegisterMode = false;
 
 authSwitchBtn.addEventListener('click', () => {
@@ -427,7 +485,6 @@ authSubmitBtn.addEventListener('click', async () => {
 });
 
 function checkPlayerName() {
-    // دائماً نبدأ بإظهار شاشة تسجيل الدخول عند فتح الصفحة أو عمل Refresh (عدم الاحتفاظ بالسيشن)
     nameModal.style.display = 'flex';
     mainMenu.style.display = 'flex';
 }
@@ -648,7 +705,6 @@ function leaveRoom() {
     initGame();
 }
 
-// --- نظام التصويت الثنائي الفعال للـ Rematch ---
 acceptRematchBtn.onclick = () => {
     playSound('click');
     acceptRematchBtn.textContent = '⏳ Waiting for Opponent...';
@@ -781,7 +837,6 @@ function listenToMatch(matchId) {
                 updateStatus();
             }
         } else {
-            // منع ظهور التنبيهات المكررة عند غلق الروم
             if (gameMode === 'online-p2p' && !hasDeclinedAlertShown) {
                 hasDeclinedAlertShown = true;
                 showCustomAlert('Room Closed', 'انتهت الجلسة أو قام المنافس بمغادرة الغرفة.', () => {

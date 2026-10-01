@@ -1,936 +1,602 @@
-:root{
-  --bg:#070b16;
-  --panel:rgba(10,16,30,.76);
-  --panel2:rgba(17,25,43,.68);
-  --text:#e7f0ff;
-  --muted:#94a3b8;
-  --primary:#38bdf8;
-  --accent:#818cf8;
-  --good:#22c55e;
-  --bad:#f43f5e;
-  --line:rgba(148,163,184,.18);
-  --shadow:0 20px 60px rgba(0,0,0,.4)
-}
-
-*{box-sizing:border-box}
-
-html,body{
-  margin:0;
-  min-height:100%;
-  font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Arial,sans-serif;
-  background:
-    radial-gradient(circle at 15% 10%,rgba(56,189,248,.09),transparent 28%),
-    radial-gradient(circle at 85% 80%,rgba(129,140,248,.08),transparent 30%),
-    var(--bg);
-  color:var(--text)
-}
-
-body{overflow-x:hidden}
-
-button,input,select{font:inherit}
-button{border:0}
-button:disabled{opacity:.45;cursor:not-allowed}
-.hidden{display:none!important}
-
-/* BACKGROUND */
-#bgCanvas{
-  position:fixed;
-  inset:0;
-  width:100%;
-  height:100%;
-  pointer-events:none;
-  opacity:.68;
-  z-index:0
-}
-
-/* APP */
-.app{
-  position:relative;
-  z-index:2;
-  min-height:100vh;
-  padding:10px;
-  max-width:1180px;
-  margin:auto
-}
-
-.glass{
-  background:
-    linear-gradient(
-      145deg,
-      rgba(15,23,42,.82),
-      rgba(7,12,24,.7)
-    );
-  border:1px solid var(--line);
-  box-shadow:var(--shadow);
-  backdrop-filter:blur(18px)
-}
-
-/* AUTH */
-.screen-overlay{
-  position:fixed;
-  inset:0;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:14px;
-  background:rgba(1,4,10,.78);
-  backdrop-filter:blur(16px);
-  z-index:100
-}
-
-.auth-card,.dialog{
-  width:min(440px,100%);
-  padding:22px;
-  border-radius:22px;
-  text-align:center
-}
-
-.auth-card h1,.dialog h2{
-  margin:6px 0 8px;
-  font-size:26px
-}
-
-.auth-card p,.dialog p{
-  color:var(--muted);
-  line-height:1.7
-}
-
-.brand-mark{
-  font-size:52px;
-  font-weight:1000;
-  letter-spacing:-.08em;
-  line-height:1
-}
-
-.brand-mark span{color:var(--primary)}
-
-.eyebrow{
-  margin:0;
-  color:var(--primary)!important;
-  font-size:10px;
-  font-weight:900;
-  letter-spacing:.16em
-}
-
-.stack{
-  display:grid;
-  gap:10px;
-  margin-top:18px
-}
-
-.field{
-  width:100%;
-  padding:11px 13px;
-  border-radius:12px;
-  border:1px solid var(--line);
-  background:rgba(2,6,23,.68);
-  color:var(--text);
-  outline:none
-}
-
-.field:focus{
-  border-color:rgba(56,189,248,.55);
-  box-shadow:0 0 0 3px rgba(56,189,248,.08)
-}
-
-.primary-btn,
-.secondary-btn,
-.danger-btn,
-.level-btn,
-.link-btn{
-  cursor:pointer;
-  transition:.18s
-}
-
-.primary-btn{
-  padding:11px 16px;
-  border-radius:12px;
-  background:linear-gradient(135deg,var(--primary),#0284c7);
-  color:#031019;
-  font-weight:950;
-  box-shadow:0 10px 24px rgba(56,189,248,.16)
-}
-
-.secondary-btn{
-  padding:9px 13px;
-  border-radius:11px;
-  background:rgba(15,23,42,.8);
-  color:var(--text);
-  border:1px solid var(--line);
-  font-weight:800
-}
-
-.danger-btn{
-  padding:9px 13px;
-  border-radius:11px;
-  background:rgba(127,29,29,.8);
-  color:#fff;
-  border:1px solid rgba(244,63,94,.3);
-  font-weight:850
-}
-
-.primary-btn:hover,
-.secondary-btn:hover,
-.danger-btn:hover,
-.level-btn:hover{
-  transform:translateY(-1px);
-  filter:brightness(1.08)
-}
-
-.link-btn{
-  background:none;
-  color:var(--primary);
-  font-size:12px;
-  margin-top:9px
-}
-
-.security-note{
-  font-size:9px!important;
-  margin-top:17px;
-  opacity:.72
-}
-
-/* HEADER */
-.topbar{
-  height:56px;
-  border-radius:16px;
-  padding:8px 12px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  position:sticky;
-  top:8px;
-  z-index:20
-}
-
-.brand-button{
-  background:none;
-  color:#fff;
-  font-weight:1000;
-  font-size:16px;
-  cursor:pointer;
-  letter-spacing:.04em
-}
-
-.brand-button span{color:var(--primary)}
-
-.desktop-nav{
-  display:flex;
-  gap:3px;
-  align-items:center;
-  flex:1;
-  justify-content:center
-}
-
-.desktop-nav button,
-.mobile-nav button{
-  background:none;
-  color:var(--muted);
-  padding:8px 10px;
-  border-radius:9px;
-  cursor:pointer;
-  font-size:11px;
-  font-weight:850
-}
-
-.desktop-nav button:hover,
-.mobile-nav button:hover{
-  background:rgba(255,255,255,.05);
-  color:#fff
-}
-
-.top-user{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  font-size:10px;
-  font-weight:850
-}
-
-.top-user span:last-of-type{color:var(--good)}
-
-#mobileMenuBtn{
-  display:none;
-  background:none;
-  color:#fff;
-  font-size:19px
-}
-
-.mobile-nav{
-  display:none;
-  margin-top:7px;
-  padding:7px;
-  border-radius:14px;
-  grid-template-columns:repeat(3,1fr);
-  gap:3px
-}
-
-/* PAGES */
-.page{padding:16px 0 28px}
-
-.hero{
-  min-height:390px;
-  border-radius:24px;
-  padding:28px;
-  display:grid;
-  grid-template-columns:1.1fr .9fr;
-  align-items:center;
-  gap:18px;
-  overflow:hidden;
-  position:relative
-}
-
-.hero:before{
-  content:"";
-  position:absolute;
-  inset:-30%;
-  background:
-    conic-gradient(
-      from 180deg,
-      transparent,
-      rgba(56,189,248,.08),
-      transparent 35%,
-      rgba(129,140,248,.07),
-      transparent 65%
-    );
-  animation:spin 20s linear infinite
-}
-
-.hero>*{position:relative}
-
-.hero h1{
-  font-size:clamp(34px,5vw,58px);
-  line-height:.98;
-  margin:10px 0 15px;
-  letter-spacing:-.05em
-}
-
-.hero h1 span{color:var(--primary)}
-
-.hero-copy>p:not(.eyebrow){
-  max-width:620px;
-  color:var(--muted);
-  line-height:1.65;
-  font-size:13px
-}
-
-.hero-actions{
-  display:flex;
-  gap:8px;
-  margin-top:19px
-}
-
-.hero-board{
-  min-height:250px;
-  display:grid;
-  place-items:center;
-  position:relative
-}
-
-.mini-grid{
-  width:min(270px,80%);
-  aspect-ratio:1;
-  display:grid;
-  grid-template-columns:repeat(3,1fr);
-  gap:6px;
-  transform:rotate(-4deg);
-  filter:drop-shadow(0 25px 35px rgba(0,0,0,.4))
-}
-
-.mini-grid div{
-  border:1px solid rgba(56,189,248,.24);
-  border-radius:10px;
-  background:
-    linear-gradient(
-      145deg,
-      rgba(56,189,248,.09),
-      rgba(129,140,248,.05)
-    );
-  display:grid;
-  place-items:center;
-  font-size:27px;
-  font-weight:1000;
-  color:rgba(255,255,255,.7)
-}
-
-.hero-badge{
-  position:absolute;
-  bottom:12px;
-  right:3%;
-  padding:8px 10px;
-  border-radius:10px;
-  background:rgba(2,6,23,.85);
-  border:1px solid var(--line);
-  font-size:9px;
-  font-weight:1000;
-  letter-spacing:.13em
-}
-
-.hero-badge i,
-.live-pill i{
-  display:inline-block;
-  width:6px;
-  height:6px;
-  border-radius:50%;
-  background:var(--good);
-  box-shadow:0 0 12px var(--good);
-  margin-left:6px
-}
-
-/* FEATURES */
-.feature-grid{
-  display:grid;
-  grid-template-columns:repeat(4,1fr);
-  gap:9px;
-  margin-top:10px
-}
-
-.feature{
-  padding:14px;
-  border-radius:16px;
-  display:grid;
-  gap:6px
-}
-
-.feature b{font-size:12px}
-
-.feature span{
-  font-size:10px;
-  color:var(--muted);
-  line-height:1.6
-}
-
-.quick-links{
-  display:grid;
-  grid-template-columns:repeat(3,1fr);
-  gap:7px;
-  margin-top:10px;
-  padding:8px
-}
-
-.quick-links button{
-  padding:9px;
-  border-radius:10px;
-  background:rgba(255,255,255,.04);
-  color:var(--text);
-  cursor:pointer;
-  font-weight:800;
-  font-size:11px;
-  border:1px solid var(--line);
-  transition:.18s
-}
-
-.quick-links button:hover{
-  background:rgba(56,189,248,.09);
-  border-color:rgba(56,189,248,.3);
-  transform:translateY(-1px)
-}
-
-/* HEAD */
-.page-head{
-  display:flex;
-  align-items:end;
-  justify-content:space-between;
-  gap:15px;
-  margin-bottom:12px
-}
-
-.page-head h2{
-  font-size:28px;
-  margin:5px 0
-}
-
-.page-head p:not(.eyebrow){
-  color:var(--muted);
-  margin:0;
-  line-height:1.6;
-  font-size:12px
-}
-
-/* MODE */
-.mode-grid,
-.profile-grid,
-.rules-grid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:10px
-}
-
-.mode-card,
-.profile-main,
-.settings-card,
-.rule{
-  border-radius:18px;
-  padding:18px
-}
-
-.mode-icon{font-size:32px}
-
-.mode-card h3,
-.settings-card h3,
-.rule h3{
-  margin:8px 0 6px
-}
-
-.mode-card p,
-.rule p,
-.settings-card label{
-  color:var(--muted);
-  font-size:11px;
-  line-height:1.65
-}
-
-.level-row{
-  display:grid;
-  grid-template-columns:repeat(3,1fr);
-  gap:6px;
-  margin-top:14px
-}
-
-.level-btn{
-  padding:10px 6px;
-  border-radius:10px;
-  background:rgba(15,23,42,.8);
-  color:#fff;
-  border:1px solid var(--line);
-  font-weight:900;
-  font-size:11px
-}
-
-.level-btn.danger{
-  border-color:rgba(244,63,94,.35)
-}
-
-/* ONLINE */
-.online-layout{
-  display:grid;
-  grid-template-columns:260px 1fr;
-  gap:10px
-}
-
-.online-controls,
-.players-panel,
-.leaderboard-card{
-  border-radius:18px;
-  padding:18px
-}
-
-.online-controls{
-  display:grid;
-  align-content:start;
-  gap:9px
-}
-
-.online-controls label{
-  font-size:10px;
-  font-weight:900;
-  color:var(--muted)
-}
-
-.live-pill{
-  margin-top:6px;
-  padding:10px;
-  border-radius:12px;
-  background:rgba(34,197,94,.07);
-  border:1px solid rgba(34,197,94,.18);
-  font-size:10px;
-  font-weight:900
-}
-
-.hint{
-  font-size:9px;
-  color:var(--muted);
-  line-height:1.75;
-  margin-top:6px
-}
-
-.panel-title,
-.leaderboard-head{
-  display:grid;
-  grid-template-columns:1fr auto;
-  align-items:center;
-  gap:8px
-}
-
-.panel-title h3{margin:0}
-
-.panel-title span{
-  font-size:8px;
-  color:var(--good);
-  font-weight:1000;
-  letter-spacing:.12em
-}
-
-.players-list{
-  display:grid;
-  gap:7px;
-  margin-top:13px
-}
-
-.player-row{
-  display:grid;
-  grid-template-columns:1fr auto;
-  align-items:center;
-  padding:10px 11px;
-  border-radius:13px;
-  background:rgba(2,6,23,.5);
-  border:1px solid var(--line)
-}
-
-.player-row strong{font-size:11px}
-
-.player-row small{
-  display:block;
-  color:var(--muted);
-  font-size:8px;
-  margin-top:2px
-}
-
-/* RANK */
-.leaderboard-head{
-  grid-template-columns:45px 1fr 80px 65px;
-  color:var(--muted);
-  font-size:9px;
-  font-weight:900;
-  padding:0 10px 8px
-}
-
-.rank-row{
-  display:grid;
-  grid-template-columns:45px 1fr 80px 65px;
-  padding:11px 10px;
-  border-top:1px solid var(--line);
-  font-size:11px
-}
-
-.rank-row:first-child{border-top:0}
-
-/* PROFILE */
-.profile-main{text-align:center}
-
-.avatar{
-  width:70px;
-  height:70px;
-  border-radius:20px;
-  display:grid;
-  place-items:center;
-  margin:auto;
-  background:linear-gradient(135deg,var(--primary),var(--accent));
-  color:#031019;
-  font-size:32px;
-  font-weight:1000
-}
-
-.stat-grid{
-  display:grid;
-  grid-template-columns:repeat(4,1fr);
-  gap:6px;
-  margin-top:19px
-}
-
-.stat-grid div{
-  padding:11px 6px;
-  border-radius:12px;
-  background:rgba(2,6,23,.45);
-  border:1px solid var(--line)
-}
-
-.stat-grid b,
-.stat-grid span{
-  display:block
-}
-
-.stat-grid b{font-size:16px}
-
-.stat-grid span{
-  font-size:8px;
-  color:var(--muted);
-  margin-top:3px
-}
-
-.settings-card{
-  display:grid;
-  align-content:start;
-  gap:8px
-}
-
-.settings-card label{margin-top:4px}
-
-.settings-card .danger-btn{margin-top:3px}
-
-/* RULES */
-.rules-grid{grid-template-columns:repeat(4,1fr)}
-
-.rule b{
-  color:var(--primary);
-  font-size:24px
-}
-
-/* GAME */
-.game-screen{
-  position:fixed;
-  inset:0;
-  z-index:70;
-  background:
-    radial-gradient(
-      circle at 50% 0,
-      rgba(56,189,248,.08),
-      transparent 30%
-    ),
-    #030711;
-  padding:10px;
-  overflow:auto
-}
-
-.game-top,
-.game-actions,
-.connection-bar{
-  max-width:920px;
-  margin:auto;
-  border-radius:16px
-}
-
-.game-top{
-  padding:10px 12px;
-  display:grid;
-  grid-template-columns:auto 1fr auto;
-  align-items:center;
-  gap:10px
-}
-
-.game-top>div:nth-child(2){text-align:center}
-
-.game-top b,
-.game-top span{display:block}
-
-.game-top span{
-  font-size:9px;
-  color:var(--muted);
-  margin-top:2px
-}
-
-.game-score{
-  font-size:18px!important;
-  font-weight:1000;
-  display:flex!important;
-  gap:6px!important
-}
-
-.game-score span:first-child{color:#67e8f9}
-.game-score span:last-child{color:#f9a8d4}
-
-.game-score em{
-  color:var(--muted);
-  font-style:normal
-}
-
-.connection-bar{
-  margin-top:7px;
-  padding:8px 11px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:7px;
-  font-size:10px;
-  background:rgba(127,29,29,.35);
-  border:1px solid rgba(244,63,94,.25)
-}
-
-.connection-bar i{
-  width:7px;
-  height:7px;
-  border-radius:50%;
-  background:var(--good)
-}
-
-.board-wrap{
-  width:min(620px,94vw);
-  margin:10px auto;
-  padding:8px;
-  border-radius:20px
-}
-
-.ultimate-grid{
-  display:grid;
-  grid-template-columns:repeat(3,1fr);
-  gap:5px
-}
-
-.local-board{
-  display:grid;
-  grid-template-columns:repeat(3,1fr);
-  gap:3px;
-  padding:4px;
-  border-radius:10px;
-  border:1px solid var(--line);
-  background:rgba(15,23,42,.6);
-  position:relative
-}
-
-.local-board.active{
-  border-color:rgba(56,189,248,.65);
-  box-shadow:0 0 22px rgba(56,189,248,.08)
-}
-
-.local-board.locked{opacity:.4}
-
-.cell{
-  aspect-ratio:1;
-  min-width:0;
-  border-radius:6px;
-  border:1px solid rgba(148,163,184,.12);
-  background:rgba(2,6,23,.65);
-  color:#fff;
-  display:grid;
-  place-items:center;
-  font-size:clamp(15px,3vw,24px);
-  font-weight:1000;
-  cursor:pointer;
-  transition:.12s
-}
-
-.cell:hover:not(:disabled){
-  background:rgba(56,189,248,.09);
-  border-color:rgba(56,189,248,.3)
-}
-
-.cell.x{color:#67e8f9}
-.cell.o{color:#f9a8d4}
-
-.local-overlay{
-  position:absolute;
-  inset:0;
-  display:grid;
-  place-items:center;
-  font-size:42px;
-  font-weight:1000;
-  pointer-events:none
-}
-
-.game-actions{
-  padding:9px 12px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:8px;
-  font-size:10px
-}
-
-.game-actions>span{margin-right:auto}
-
-/* DIALOGS */
-.dialog-actions{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:7px;
-  margin-top:14px
-}
-
-.warning-icon{
-  font-size:38px;
-  margin-bottom:3px
-}
-
-.disconnect strong{
-  display:block;
-  font-size:56px;
-  color:var(--bad);
-  margin:8px 0 13px
-}
-
-/* TOAST */
-.toast-root{
-  position:fixed;
-  left:14px;
-  bottom:14px;
-  z-index:200;
-  display:grid;
-  gap:7px;
-  pointer-events:none
-}
-
-.toast{
-  padding:10px 13px;
-  border-radius:11px;
-  background:rgba(15,23,42,.94);
-  border:1px solid var(--line);
-  box-shadow:var(--shadow);
-  color:#fff;
-  font-size:10px;
-  animation:toastIn .2s ease
-}
-
-.toast.good{border-color:rgba(34,197,94,.35)}
-.toast.bad{border-color:rgba(244,63,94,.35)}
-
-@keyframes spin{
-  to{transform:rotate(360deg)}
-}
-
-@keyframes toastIn{
-  from{opacity:0;transform:translateY(8px)}
-  to{opacity:1;transform:translateY(0)}
-}
-
-/* THEMES */
-.theme-matrix{
-  --primary:#4ade80;
-  --accent:#22c55e;
-  --good:#86efac
-}
-
-.theme-obsidian{
-  --primary:#c4b5fd;
-  --accent:#a78bfa
-}
-
-.theme-vaporwave{
-  --primary:#f0abfc;
-  --accent:#818cf8
-}
-
-/* RESPONSIVE */
-@media(max-width:900px){
-  .feature-grid{grid-template-columns:repeat(2,1fr)}
-  .rules-grid{grid-template-columns:repeat(2,1fr)}
-  .hero{grid-template-columns:1fr;min-height:0}
-  .hero-board{min-height:250px}
-}
-
-@media(max-width:700px){
-  .desktop-nav{display:none}
-  #mobileMenuBtn{display:block}
-  .mobile-nav.open{display:grid}
-  .top-user{gap:6px}
-  .hero{padding:22px}
-  .hero h1{font-size:40px}
-  .mode-grid,
-  .profile-grid,
-  .online-layout{grid-template-columns:1fr}
-  .online-layout{gap:8px}
-  .rules-grid{grid-template-columns:1fr 1fr}
-  .board-wrap{width:min(560px,96vw)}
-}
-
-@media(max-width:480px){
-  .app{padding:7px}
-  .topbar{height:52px;padding:7px 9px}
-  .brand-button{font-size:14px}
-  .top-user{font-size:9px}
-  .page{padding-top:12px}
-  .hero{padding:18px;border-radius:19px}
-  .hero h1{font-size:34px}
-  .hero-actions{flex-direction:column}
-  .feature-grid{grid-template-columns:1fr 1fr}
-  .feature{padding:11px}
-  .quick-links{grid-template-columns:1fr}
-  .page-head h2{font-size:24px}
-  .rules-grid{grid-template-columns:1fr}
-  .stat-grid{grid-template-columns:repeat(2,1fr)}
-  .game-top{grid-template-columns:auto 1fr auto}
-  .game-score{font-size:15px!important}
-  .game-actions{flex-wrap:wrap}
-  .game-actions>span{width:100%;margin:0;text-align:center}
-  .dialog-actions{grid-template-columns:1fr}
-}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" id="htmlRoot">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Ultimate X/O | Online Arena</title>
+  <link rel="stylesheet" href="style.css">
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+    import {
+      getDatabase, ref, set, update, onValue, remove,
+      onDisconnect, get, push
+    } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAQLsvV-6roMQOlGkgXPfyC182O4MN6Xgc",
+      authDomain: "ultimate-xo-game.firebaseapp.com",
+      databaseURL: "https://ultimate-xo-game-default-rtdb.firebaseio.com",
+      projectId: "ultimate-xo-game",
+      storageBucket: "ultimate-xo-game.firebasestorage.app",
+      messagingSenderId: "812115160959",
+      appId: "1:812115160959:web:02f9639b4f346b3293744a",
+      measurementId: "G-KMGLHNH5MQ"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    Object.assign(window,{
+      db,
+      dbRef:ref,
+      dbSet:set,
+      dbUpdate:update,
+      dbOnValue:onValue,
+      dbRemove:remove,
+      dbOnDisconnect:onDisconnect,
+      dbGet:get,
+      dbPush:push
+    });
+
+    window.dispatchEvent(new Event("firebase-ready"));
+  </script>
+</head>
+
+<body>
+<canvas id="bgCanvas" aria-hidden="true"></canvas>
+<div id="toastRoot" class="toast-root"></div>
+
+<!-- AUTH -->
+<div id="authScreen" class="screen-overlay">
+  <section class="auth-card glass">
+    <div class="brand-mark">X<span>O</span></div>
+    <p class="eyebrow">ULTIMATE ARENA</p>
+
+    <h1 id="authTitle">تسجيل الدخول</h1>
+    <p id="authHint">ادخل باسم اللاعب ورقم الـPIN الخاص بك.</p>
+
+    <form id="authForm" class="stack">
+      <input
+        id="authName"
+        class="field"
+        autocomplete="username"
+        maxlength="20"
+        placeholder="اسم اللاعب"
+        required
+      >
+
+      <input
+        id="authPin"
+        class="field"
+        autocomplete="current-password"
+        inputmode="numeric"
+        maxlength="4"
+        pattern="[0-9]{4}"
+        placeholder="PIN من 4 أرقام"
+        required
+      >
+
+      <button class="primary-btn" type="submit" id="authSubmit">
+        دخول
+      </button>
+    </form>
+
+    <button class="link-btn" id="authSwitch">
+      ليس لديك حساب؟ إنشاء حساب
+    </button>
+
+    <p class="security-note">
+      ملاحظة: نظام الـPIN الحالي مخصص للنسخة التجريبية.
+      للإطلاق العام يُفضّل نقل الحسابات إلى Firebase Authentication.
+    </p>
+  </section>
+</div>
+
+<!-- APP -->
+<div id="app" class="app hidden">
+
+  <header class="topbar glass">
+    <button class="brand-button" data-route="home">
+      <span>ULTIMATE</span> X/O
+    </button>
+
+    <nav class="desktop-nav" id="desktopNav">
+      <button data-route="home">الرئيسية</button>
+      <button data-route="play">اللعب</button>
+      <button data-route="online">الأونلاين</button>
+    </nav>
+
+    <div class="top-user">
+      <span id="topUserName">Player</span>
+      <span id="topPoints">10 pts</span>
+      <button id="mobileMenuBtn">☰</button>
+    </div>
+  </header>
+
+  <aside id="mobileNav" class="mobile-nav glass">
+    <button data-route="home">الرئيسية</button>
+    <button data-route="play">اللعب</button>
+    <button data-route="online">الأونلاين</button>
+  </aside>
+
+  <main id="page" class="page"></main>
+</div>
+
+<!-- HOME -->
+<template id="homeTemplate">
+  <section class="hero glass">
+
+    <div class="hero-copy">
+      <p class="eyebrow">NEXT-GEN ULTIMATE TIC-TAC-TOE</p>
+
+      <h1>
+        الملعب اللي <span>ما بيهزرش.</span>
+      </h1>
+
+      <p>
+        العب ضد الذكاء الاصطناعي أو ادخل Arena مباشرة،
+        تحدى لاعب، وشوف ترتيبك لحظة بلحظة.
+      </p>
+
+      <div class="hero-actions">
+        <button class="primary-btn" data-route="play">
+          ابدأ اللعب
+        </button>
+
+        <button class="secondary-btn" data-route="online">
+          ادخل الأونلاين
+        </button>
+      </div>
+    </div>
+
+    <div class="hero-board">
+      <div class="mini-grid" id="miniGrid"></div>
+
+      <div class="hero-badge">
+        LIVE ARENA <i></i>
+      </div>
+    </div>
+
+  </section>
+
+  <div class="feature-grid">
+
+    <article class="feature glass">
+      <b>⚡ Zero-wait UI</b>
+      <span>
+        الحركة تظهر محليًا فورًا، ثم تتزامن مع الخصم.
+      </span>
+    </article>
+
+    <article class="feature glass">
+      <b>🛰️ 30s Reconnect</b>
+      <span>
+        انقطاع النت لا ينهي المباراة فورًا؛ يوجد وقت للعودة.
+      </span>
+    </article>
+
+    <article class="feature glass">
+      <b>🧠 3 AI Levels</b>
+      <span>
+        Easy وMedium وGrandmaster بمنطق لعب مختلف.
+      </span>
+    </article>
+
+    <article class="feature glass">
+      <b>🏆 Global Rank</b>
+      <span>
+        الترتيب منفصل عن البروفايل ومتاح من صفحة مستقلة.
+      </span>
+    </article>
+
+  </div>
+
+  <div class="quick-links glass">
+    <button data-route="leaderboard">🏆 الترتيب</button>
+    <button data-route="profile">👤 البروفايل</button>
+    <button data-route="rules">📜 القواعد</button>
+  </div>
+</template>
+
+<!-- PLAY -->
+<template id="playTemplate">
+  <section class="page-head">
+    <div>
+      <p class="eyebrow">OFFLINE</p>
+      <h2>اختار طريقة اللعب</h2>
+      <p>حدد مستوى البوت ونظام الكأس ثم ابدأ.</p>
+    </div>
+  </section>
+
+  <div class="mode-grid">
+
+    <article class="mode-card glass">
+      <div class="mode-icon">🤖</div>
+
+      <h3>ضد AI</h3>
+
+      <p>
+        ذكاء يتعامل مع الفوز، الدفاع، توجيه الخصم،
+        والتحكم في الـlocal boards.
+      </p>
+
+      <div class="level-row">
+        <button class="level-btn" data-ai="easy">
+          Easy
+        </button>
+
+        <button class="level-btn" data-ai="medium">
+          Medium
+        </button>
+
+        <button class="level-btn danger" data-ai="impossible">
+          Grandmaster
+        </button>
+      </div>
+    </article>
+
+    <article class="mode-card glass">
+      <div class="mode-icon">🏆</div>
+
+      <h3>نظام المباراة</h3>
+
+      <p>اختار عدد الجولات قبل البداية.</p>
+
+      <select id="offlineFormat" class="field">
+        <option value="1">Single — جولة واحدة</option>
+        <option value="3">Best of 3</option>
+        <option value="5">Best of 5</option>
+        <option value="infinity">Endless</option>
+      </select>
+    </article>
+
+  </div>
+</template>
+
+<!-- ONLINE -->
+<template id="onlineTemplate">
+  <section class="page-head">
+    <div>
+      <p class="eyebrow">LIVE PVP</p>
+
+      <h2>Online Arena</h2>
+
+      <p>
+        اختار الـformat، ثم تحدى لاعبًا متاحًا.
+        الـmode والـformat ينتقلان مع طلب التحدي للطرف الآخر.
+      </p>
+    </div>
+
+    <button id="refreshPlayers" class="secondary-btn">
+      ↻ تحديث
+    </button>
+  </section>
+
+  <section class="online-layout">
+
+    <aside class="online-controls glass">
+      <label>نظام المباراة</label>
+
+      <select id="onlineFormat" class="field">
+        <option value="1">Single</option>
+        <option value="3">Best of 3</option>
+        <option value="5">Best of 5</option>
+        <option value="infinity">Endless</option>
+      </select>
+
+      <div class="live-pill">
+        <i></i>
+        <span id="onlineCount">0</span>
+        لاعبين متاحين
+      </div>
+
+      <div class="hint">
+        لا يمكن بدء المباراة أو إعادة الجولة من طرف واحد.
+        كل قرار حساس يحتاج مزامنة الطرفين.
+      </div>
+    </aside>
+
+    <div class="players-panel glass">
+      <div class="panel-title">
+        <h3>اللاعبون المتاحون</h3>
+        <span id="lobbyState">LIVE</span>
+      </div>
+
+      <div id="playersList" class="players-list"></div>
+    </div>
+
+  </section>
+</template>
+
+<!-- LEADERBOARD -->
+<template id="leaderboardTemplate">
+  <section class="page-head">
+    <div>
+      <p class="eyebrow">GLOBAL RANKING</p>
+      <h2>الترتيب العام</h2>
+      <p>الترتيب صفحة مستقلة، وليس جزءًا من البروفايل.</p>
+    </div>
+  </section>
+
+  <section class="glass leaderboard-card">
+    <div class="leaderboard-head">
+      <span>#</span>
+      <span>Player</span>
+      <span>Points</span>
+      <span>Wins</span>
+    </div>
+
+    <div id="leaderboardRows"></div>
+  </section>
+</template>
+
+<!-- PROFILE -->
+<template id="profileTemplate">
+  <section class="page-head">
+    <div>
+      <p class="eyebrow">PLAYER</p>
+      <h2>البروفايل</h2>
+      <p>إحصائياتك الشخصية وإعدادات الحساب.</p>
+    </div>
+  </section>
+
+  <section class="profile-grid">
+
+    <div class="glass profile-main">
+      <div class="avatar" id="profileAvatar">X</div>
+
+      <h3 id="profileName">Player</h3>
+
+      <p>عضو في Ultimate Arena</p>
+
+      <div class="stat-grid">
+
+        <div>
+          <b id="profilePoints">10</b>
+          <span>Points</span>
+        </div>
+
+        <div>
+          <b id="profileTotal">0</b>
+          <span>Matches</span>
+        </div>
+
+        <div>
+          <b id="profileWins">0</b>
+          <span>Wins</span>
+        </div>
+
+        <div>
+          <b id="profileLosses">0</b>
+          <span>Losses</span>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="glass settings-card">
+      <h3>الإعدادات</h3>
+
+      <label>Theme</label>
+
+      <select id="themeSelect" class="field">
+        <option value="theme-cyberpunk">Cyberpunk</option>
+        <option value="theme-matrix">Matrix</option>
+        <option value="theme-obsidian">Obsidian</option>
+        <option value="theme-vaporwave">Vaporwave</option>
+      </select>
+
+      <button id="logoutBtn" class="secondary-btn">
+        تسجيل الخروج
+      </button>
+
+      <button id="deleteBtn" class="danger-btn">
+        حذف الحساب
+      </button>
+    </div>
+
+  </section>
+</template>
+
+<!-- RULES -->
+<template id="rulesTemplate">
+  <section class="page-head">
+    <div>
+      <p class="eyebrow">HOW TO PLAY</p>
+      <h2>القواعد</h2>
+    </div>
+  </section>
+
+  <section class="rules-grid">
+
+    <article class="glass rule">
+      <b>01</b>
+      <h3>Local Boards</h3>
+      <p>
+        كل حركة تحدد الـlocal board الذي سيلعب فيه الخصم بعدك.
+      </p>
+    </article>
+
+    <article class="glass rule">
+      <b>02</b>
+      <h3>Ultimate Win</h3>
+      <p>
+        الفوز بثلاثة local boards متصلة يكسب المباراة.
+      </p>
+    </article>
+
+    <article class="glass rule">
+      <b>03</b>
+      <h3>Free Board</h3>
+      <p>
+        إذا كانت الوجهة المرسلة إلى board منتهية،
+        يحصل الخصم على اختيار حر من الـboards المفتوحة.
+      </p>
+    </article>
+
+    <article class="glass rule">
+      <b>04</b>
+      <h3>Online Safety</h3>
+      <p>
+        Restart يحتاج قبول الطرف الثاني، وEnd يغلق المباراة
+        عند الطرفين، والانقطاع يمنح 30 ثانية للعودة.
+      </p>
+    </article>
+
+  </section>
+</template>
+
+<!-- GAME -->
+<div id="gameScreen" class="game-screen hidden">
+
+  <div class="game-top glass">
+    <button id="leaveGame" class="secondary-btn">
+      ← خروج
+    </button>
+
+    <div>
+      <b id="gameTitle">Ultimate Match</b>
+      <span id="gameOpponent">vs Opponent</span>
+    </div>
+
+    <div class="game-score">
+      <span id="scoreX">0</span>
+      <em>:</em>
+      <span id="scoreO">0</span>
+    </div>
+  </div>
+
+  <div id="connectionBar" class="connection-bar hidden">
+    <i id="connectionDot"></i>
+    <span id="connectionText">متصل</span>
+    <b id="connectionTimer"></b>
+  </div>
+
+  <div class="board-wrap glass">
+    <div id="ultimateBoard" class="ultimate-grid"></div>
+  </div>
+
+  <div class="game-actions glass">
+    <span>
+      Turn:
+      <b id="turnText">X</b>
+    </span>
+
+    <button id="restartGame" class="secondary-btn">
+      Restart
+    </button>
+
+    <button id="endGame" class="danger-btn">
+      End Match
+    </button>
+  </div>
+
+</div>
+
+<!-- CHALLENGE -->
+<div id="challengeOverlay" class="screen-overlay hidden">
+  <section class="dialog glass">
+    <p class="eyebrow">INCOMING CHALLENGE</p>
+
+    <h2 id="challengeTitle">Challenge</h2>
+    <p id="challengeText"></p>
+
+    <div class="dialog-actions">
+      <button id="acceptChallenge" class="primary-btn">
+        قبول
+      </button>
+
+      <button id="declineChallenge" class="danger-btn">
+        رفض
+      </button>
+    </div>
+  </section>
+</div>
+
+<!-- RESTART -->
+<div id="restartOverlay" class="screen-overlay hidden">
+  <section class="dialog glass">
+    <p class="eyebrow">RESTART REQUEST</p>
+
+    <h2>طلب إعادة الجولة</h2>
+
+    <p id="restartText">
+      الخصم يطلب إعادة الجولة الحالية.
+    </p>
+
+    <div class="dialog-actions">
+      <button id="acceptRestart" class="primary-btn">
+        موافق
+      </button>
+
+      <button id="declineRestart" class="danger-btn">
+        رفض
+      </button>
+    </div>
+  </section>
+</div>
+
+<!-- RESULT -->
+<div id="resultOverlay" class="screen-overlay hidden">
+  <section class="dialog glass">
+    <p class="eyebrow">MATCH RESULT</p>
+
+    <h2 id="resultTitle">انتهت الجولة</h2>
+    <p id="resultText"></p>
+
+    <div class="dialog-actions">
+      <button id="acceptRematch" class="primary-btn">
+        الجولة التالية
+      </button>
+
+      <button id="exitResult" class="danger-btn">
+        إنهاء
+      </button>
+    </div>
+  </section>
+</div>
+
+<!-- DISCONNECT -->
+<div id="disconnectOverlay" class="screen-overlay hidden">
+  <section class="dialog glass disconnect">
+
+    <div class="warning-icon">⚠</div>
+
+    <p class="eyebrow">CONNECTION LOST</p>
+
+    <h2>الخصم غير متصل</h2>
+
+    <p>
+      العداد يعمل الآن. إذا عاد الخصم قبل انتهاء الوقت
+      ستستمر المباراة من نفس الحالة.
+    </p>
+
+    <strong id="disconnectCountdown">30</strong>
+
+    <button id="disconnectLeave" class="danger-btn">
+      خروج
+    </button>
+
+  </section>
+</div>
+
+<!-- NOTICE -->
+<div id="noticeOverlay" class="screen-overlay hidden">
+  <section class="dialog glass">
+
+    <p class="eyebrow">NOTICE</p>
+
+    <h2 id="noticeTitle">Notice</h2>
+    <p id="noticeText"></p>
+
+    <button id="noticeOk" class="primary-btn">
+      حسنًا
+    </button>
+
+  </section>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

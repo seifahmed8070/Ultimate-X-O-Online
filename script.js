@@ -39,6 +39,17 @@ const victoryTitle = document.getElementById('victoryTitle');
 const victoryText = document.getElementById('victoryText');
 const nextRoundBtn = document.getElementById('nextRoundBtn');
 
+// إضافة زرار العودة للقائمة الرئيسية جوه نافذة الفوز بجانب الـ Play Again
+let victoryButtonContainer = nextRoundBtn.parentElement;
+let victoryMenuBtn = document.getElementById('victoryMenuBtn');
+if (!victoryMenuBtn && victoryButtonContainer) {
+    victoryMenuBtn = document.createElement('button');
+    victoryMenuBtn.id = 'victoryMenuBtn';
+    victoryMenuBtn.className = 'w-full sub-box border font-bold py-2.5 rounded-xl text-sm mt-2 transition-all hover:border-cyan-400';
+    victoryMenuBtn.textContent = '🏠 Main Menu';
+    victoryButtonContainer.appendChild(victoryMenuBtn);
+}
+
 const nameModal = document.getElementById('nameModal');
 const playerNameInput = document.getElementById('playerNameInput');
 const saveNameBtn = document.getElementById('saveNameBtn');
@@ -449,9 +460,8 @@ function requestRestart() {
         const matchRef = window.dbRef(window.db, `matches/${currentMatchId}/rematch`);
         window.dbSet(matchRef, { from: myRole, status: 'pending' });
         resetBtn.textContent = 'Wait...';
-        nextRoundBtn.textContent = 'Waiting...';
+        nextRoundBtn.textContent = 'Waiting for Opponent...';
     } else {
-        // في الأوفلاين، إعادة التعيين مباشرة بدون طلب موافقة
         if(victoryModal.style.display === 'flex' && victoryTitle.textContent.includes('CUP')) {
             scores = { X: 0, O: 0 };
         }
@@ -462,6 +472,12 @@ function requestRestart() {
 acceptRematchBtn.onclick = () => {
     playSound('click');
     rematchModal.style.display = 'none';
+    
+    let newScores = scores;
+    if (scores.X >= targetWins || scores.O >= targetWins) {
+        newScores = { X: 0, O: 0 };
+    }
+
     const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
     window.dbUpdate(matchRef, {
         boardStates: Array(9).fill().map(() => Array(9).fill('')),
@@ -469,7 +485,8 @@ acceptRematchBtn.onclick = () => {
         activeBoardIndex: null,
         currentPlayer: 'X',
         winnerData: null,
-        rematch: null
+        rematch: null,
+        matchScores: newScores
     });
 };
 
@@ -478,6 +495,15 @@ rejectRematchBtn.onclick = () => {
     rematchModal.style.display = 'none';
     window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}/rematch`), { status: 'declined', from: myRole });
 };
+
+// زرار العودة للقائمة الرئيسية من داخل نافذة الفوز
+if (victoryMenuBtn) {
+    victoryMenuBtn.onclick = () => {
+        playSound('click');
+        victoryModal.style.display = 'none';
+        leaveRoom();
+    };
+}
 
 function sanitizeBoardStates(data) {
     let clean = Array(9).fill().map(() => Array(9).fill(''));
@@ -687,7 +713,6 @@ function handleCellClick(bIndex, cIndex) {
         return;
     }
 
-    // --- التعديل هنا: فحص التعادل الكلي وإرسال 'DRAW' كفائز ---
     const isGlobalDraw = boardWins.every(win => win !== null);
     if (isGlobalDraw) {
         handleMatchEnd('DRAW');
@@ -744,7 +769,6 @@ function checkUltimateWin() {
     return wins.some(([x,y,z]) => boardWins[x] && boardWins[x] !== 'DRAW' && boardWins[x] === boardWins[y] && boardWins[x] === boardWins[z]);
 }
 
-// --- التعديل هنا: التعامل مع التعادل (DRAW) والنقاط المخصصة ---
 function handleMatchEnd(winnerRole) {
     playSound('win');
     stats.total++;
@@ -753,13 +777,11 @@ function handleMatchEnd(winnerRole) {
     let isCupWin = false;
 
     if (winnerRole === 'DRAW') {
-        // في حالة التعادل، إعطاء نقطة واحدة
         userArenaPoints += 1;
     } else {
         scores[winnerRole]++;
         winnerName = (gameMode === 'online-p2p') ? (winnerRole === myRole ? playerName : opponentName) : `Player ${winnerRole}`;
         
-        // حساب الفوز والخسارة وتوزيع الـ 3 نقاط
         const isWin = (gameMode === 'online-p2p') ? (winnerRole === myRole) : (winnerRole === 'X');
         if (isWin) { 
             stats.wins++; 
@@ -793,7 +815,6 @@ function handleMatchEnd(winnerRole) {
     }
 }
 
-// --- التعديل هنا: إظهار رسالة التعادل المناسبة للطرفين ---
 function showEndModal(winnerRole, winnerName, isCupWin) {
     if (winnerRole === 'DRAW') {
         victoryTitle.textContent = `🤝 IT'S A DRAW! 🤝`;

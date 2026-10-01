@@ -1,1941 +1,440 @@
-(() => {
-"use strict";
-
-//#region CONFIG
-const EMPTY_BOARD = Array(9).fill(null).map(() => Array(9).fill(""));
-const EMPTY_WINS = Array(9).fill("");
-const WIN_LINES = [
-  [0,1,2],[3,4,5],[6,7,8],
-  [0,3,6],[1,4,7],[2,5,8],
-  [0,4,8],[2,4,6]
-];
-
-const SESSION_KEY = "ultimate_xo_session";
-const VIEW_KEY = "ultimate_xo_view";
-const THEME_KEY = "ultimate_xo_theme";
-const DISCONNECT_SECONDS = 30;
-
-const $ = id => document.getElementById(id);
-
-let audio = null;
-let audioBusy = 0;
-let bgLast = 0;
-
-const game = {
-  mode:"offline",
-  ai:"easy",
-  format:"1",
-  target:1,
-  role:"X",
-  opponentId:"",
-  opponentName:"",
-  matchId:"",
-  board:cloneBoard(),
-  wins:[...EMPTY_WINS],
-  turn:"X",
-  scores:{X:0,O:0},
-  status:"playing",
-  winner:"",
-  lastMoveId:"",
-  phase:"playing"
-};
-
-let currentUser = null;
-let currentPage = "home";
-let authMode = "login";
-let challengeData = null;
-let listeners = [];
-let aiMoveTimer = null;
-let disconnectTimer = null;
-let resultShown = false;
-let settledResultId = "";
-//#endregion
-
-
-//#region HELPERS
-function cloneBoard(){
-  return Array.from({length:9},()=>Array(9).fill(""));
-}
-
-function targetWins(format){
-  return format === "1"
-    ? 1
-    : format === "3"
-      ? 2
-      : format === "5"
-        ? 3
-        : Infinity;
-}
-
-function formatName(format){
-  if(format === "1") return "Single";
-  if(format === "3") return "Best of 3";
-  if(format === "5") return "Best of 5";
-  return "Endless";
-}
-
-function clone(obj){
-  return JSON.parse(JSON.stringify(obj));
-}
-
-function sleep(ms){
-  return new Promise(resolve=>setTimeout(resolve,ms));
-}
-
-function playSound(type="click"){
-  try{
-    const now = performance.now();
-
-    if(type === "click" && now - audioBusy < 45) return;
-
-    audioBusy = now;
-
-    audio ||= new(window.AudioContext || window.webkitAudioContext)();
-
-    if(audio.state === "suspended") audio.resume();
-
-    const o = audio.createOscillator();
-    const g = audio.createGain();
-    const t = audio.currentTime;
-
-    const sounds = {
-      click:[520,720,.055],
-      start:[520,900,.12],
-      win:[360,680,.24],
-      lose:[300,150,.22],
-      bell:[760,1080,.18]
-    };
-
-    const v = sounds[type] || sounds.click;
-
-    o.connect(g);
-    g.connect(audio.destination);
-
-    o.type = "triangle";
-
-    o.frequency.setValueAtTime(v[0],t);
-    o.frequency.exponentialRampToValueAtTime(v[1],t + v[2]);
-
-    g.gain.setValueAtTime(.045,t);
-    g.gain.exponentialRampToValueAtTime(.005,t + v[2]);
-
-    o.start(t);
-    o.stop(t + v[2]);
-  }catch{}
-}
-
-function showToast(message,type=""){
-  const root = $("toastRoot");
-  if(!root) return;
-
-  const el = document.createElement("div");
-  el.className = `toast ${type}`;
-  el.textContent = message;
-
-  root.appendChild(el);
-
-  setTimeout(()=>{
-    el.style.opacity = "0";
-    el.style.transform = "translateY(5px)";
-    setTimeout(()=>el.remove(),180);
-  },2200);
-}
-
-function showNotice(title,text){
-  $("noticeTitle").textContent = title;
-  $("noticeText").textContent = text;
-  openOverlay("noticeOverlay");
-}
-
-function openOverlay(id){
-  const el = $(id);
-  if(el) el.classList.remove("hidden");
-}
-
-function closeOverlay(id){
-  const el = $(id);
-  if(el) el.classList.add("hidden");
-}
-
-function deepEqual(a,b){
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-//#endregion
-
-
-//#region STORAGE
-function saveSession(){
-  if(!currentUser) return;
-
-  localStorage.setItem(
-    SESSION_KEY,
-    JSON.stringify({
-      id:currentUser.id,
-      name:currentUser.name
-    })
-  );
-}
-
-function loadSession(){
-  try{
-    return JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
-  }catch{
-    return null;
-  }
-}
-
-function saveView(view){
-  localStorage.setItem(VIEW_KEY,view);
-}
-
-function loadView(){
-  return localStorage.getItem(VIEW_KEY) || "home";
-}
-
-function saveTheme(theme){
-  localStorage.setItem(THEME_KEY,theme);
-}
-
-function loadTheme(){
-  return localStorage.getItem(THEME_KEY) || "theme-cyberpunk";
-}
-//#endregion
-
-
-//#region THEME
-function applyTheme(theme){
-  const root = $("htmlRoot");
-
-  if(root){
-    root.className = theme;
-  }
-
-  saveTheme(theme);
-}
-//#endregion
-
-
-//#region AUTH
-function setAuthMode(mode){
-  authMode = mode;
-
-  $("authTitle").textContent =
-    mode === "login" ? "تسجيل الدخول" : "إنشاء حساب";
-
-  $("authHint").textContent =
-    mode === "login"
-      ? "ادخل باسم اللاعب ورقم الـPIN الخاص بك."
-      : "أنشئ اسم لاعب ورقم PIN من 4 أرقام.";
-
-  $("authSubmit").textContent =
-    mode === "login" ? "دخول" : "إنشاء الحساب";
-
-  $("authSwitch").textContent =
-    mode === "login"
-      ? "ليس لديك حساب؟ إنشاء حساب"
-      : "لديك حساب؟ تسجيل الدخول";
-}
-
-async function authSubmit(e){
-  e.preventDefault();
-
-  const name = $("authName").value.trim();
-  const pin = $("authPin").value.trim();
-
-  if(name.length < 2){
-    showToast("اكتب اسمًا من حرفين على الأقل","bad");
-    return;
-  }
-
-  if(!/^\d{4}$/.test(pin)){
-    showToast("الـPIN يجب أن يكون 4 أرقام","bad");
-    return;
-  }
-
-  const id = name.toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]/gi,"").slice(0,20);
-
-  if(!id){
-    showToast("اسم اللاعب غير صالح","bad");
-    return;
-  }
-
-  try{
-    const userRef = dbRef(db,`players/${id}`);
-    const snap = await dbGet(userRef);
-    const existing = snap.exists() ? snap.val() : null;
-
-    if(authMode === "login"){
-      if(!existing){
-        showToast("الحساب غير موجود","bad");
-        return;
-      }
-
-      if(existing.pin !== pin){
-        showToast("الـPIN غير صحيح","bad");
-        return;
-      }
-
-      currentUser = {
-        id,
-        name:existing.name,
-        pin,
-        points:Number(existing.points ?? 10),
-        total:Number(existing.total ?? 0),
-        wins:Number(existing.wins ?? 0),
-        losses:Number(existing.losses ?? 0),
-        draws:Number(existing.draws ?? 0)
-      };
-    }else{
-      if(existing){
-        showToast("اسم اللاعب مستخدم بالفعل","bad");
-        return;
-      }
-
-      currentUser = {
-        id,
-        name,
-        pin,
-        points:10,
-        total:0,
-        wins:0,
-        losses:0,
-        draws:0
-      };
-
-      await dbSet(userRef,{
-        ...currentUser,
-        status:"offline",
-        updatedAt:Date.now()
-      });
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playSound(type) {
+    if (audioCtx.state === 'suspended') { audioCtx.resume(); }
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    if (type === 'click') {
+        osc.type = 'sine'; osc.frequency.setValueAtTime(400, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.08); gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime); gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08); osc.start(); osc.stop(audioCtx.currentTime + 0.08);
+    } else if (type === 'win') {
+        osc.type = 'triangle'; osc.frequency.setValueAtTime(300, audioCtx.currentTime); osc.frequency.setValueAtTime(500, audioCtx.currentTime + 0.1); osc.frequency.setValueAtTime(700, audioCtx.currentTime + 0.2); gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime); gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4); osc.start(); osc.stop(audioCtx.currentTime + 0.4);
+    } else if (type === 'bell') {
+        osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime); osc.frequency.setValueAtTime(1320, audioCtx.currentTime + 0.15); gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime); gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35); osc.start(); osc.stop(audioCtx.currentTime + 0.35);
     }
-
-    saveSession();
-    await registerPresence();
-
-    $("authScreen").classList.add("hidden");
-    $("app").classList.remove("hidden");
-
-    updateHeader();
-    navigate(loadView());
-
-    showToast(
-      authMode === "login" ? "تم تسجيل الدخول" : "تم إنشاء الحساب",
-      "good"
-    );
-
-  }catch(err){
-    console.error(err);
-    showToast("حصل خطأ في الاتصال بالسيرفر","bad");
-  }
 }
 
-async function restoreSession(){
-  const session = loadSession();
-
-  if(!session) return false;
-
-  try{
-    const snap = await dbGet(dbRef(db,`players/${session.id}`));
-
-    if(!snap.exists()) return false;
-
-    const u = snap.val();
-
-    currentUser = {
-      id:session.id,
-      name:u.name,
-      pin:u.pin,
-      points:Number(u.points ?? 10),
-      total:Number(u.total ?? 0),
-      wins:Number(u.wins ?? 0),
-      losses:Number(u.losses ?? 0),
-      draws:Number(u.draws ?? 0)
-    };
-
-    $("authScreen").classList.add("hidden");
-    $("app").classList.remove("hidden");
-
-    await registerPresence();
-
-    updateHeader();
-    navigate(loadView());
-
-    return true;
-
-  }catch{
-    return false;
-  }
-}
-
-async function logout(){
-  try{
-    await dbUpdate(dbRef(db,`players/${currentUser.id}`),{
-      status:"offline",
-      updatedAt:Date.now()
-    });
-  }catch{}
-
-  localStorage.removeItem(SESSION_KEY);
-  location.reload();
-}
-
-async function deleteAccount(){
-  if(!currentUser) return;
-
-  const ok = confirm("هل تريد حذف الحساب نهائيًا؟");
-  if(!ok) return;
-
-  try{
-    await dbRemove(dbRef(db,`players/${currentUser.id}`));
-    localStorage.removeItem(SESSION_KEY);
-    location.reload();
-  }catch{
-    showToast("تعذر حذف الحساب","bad");
-  }
-}
-//#endregion
-
-
-//#region PRESENCE
-async function registerPresence(){
-  if(!currentUser) return;
-
-  const refUser = dbRef(db,`players/${currentUser.id}`);
-
-  await dbUpdate(refUser,{
-    name:currentUser.name,
-    points:Number(currentUser.points ?? 10),
-    total:Number(currentUser.total ?? 0),
-    wins:Number(currentUser.wins ?? 0),
-    losses:Number(currentUser.losses ?? 0),
-    draws:Number(currentUser.draws ?? 0),
-    status:"online",
-    updatedAt:Date.now()
-  });
-
-  try{
-    await dbOnDisconnect(refUser).update({
-      status:"offline",
-      updatedAt:Date.now()
-    });
-  }catch{}
-}
-
-async function savePlayerStats(){
-  if(!currentUser) return;
-
-  await dbUpdate(
-    dbRef(db,`players/${currentUser.id}`),
-    {
-      name:currentUser.name,
-      points:Number(currentUser.points || 0),
-      total:Number(currentUser.total || 0),
-      wins:Number(currentUser.wins || 0),
-      losses:Number(currentUser.losses || 0),
-      draws:Number(currentUser.draws || 0),
-      status:"online",
-      updatedAt:Date.now()
-    }
-  );
-
-  updateHeader();
-}
-//#endregion
-
-
-//#region NAVIGATION
-function navigate(page){
-  if(!currentUser) return;
-
-  currentPage = page;
-  saveView(page);
-
-  renderPage(page);
-  updateHeader();
-
-  if(page === "online"){
-    refreshLobby();
-    watchChallenges();
-  }
-}
-
-function renderPage(page){
-  const template = $(`${page}Template`);
-
-  if(!template){
-    page = "home";
-  }
-
-  const finalTemplate = $(`${page}Template`);
-
-  $("page").innerHTML = finalTemplate.innerHTML;
-
-  bindPage(page);
-
-  if(page === "home") buildMiniGrid();
-  if(page === "leaderboard") loadLeaderboard();
-  if(page === "profile") renderProfile();
-
-  window.scrollTo({top:0,behavior:"smooth"});
-}
-
-function bindPage(page){
-  document.querySelectorAll("[data-route]").forEach(btn=>{
-    btn.onclick = ()=>navigate(btn.dataset.route);
-  });
-
-  if(page === "play"){
-    document.querySelectorAll("[data-ai]").forEach(btn=>{
-      btn.onclick = ()=>{
-        const format = $("offlineFormat").value;
-        startOffline(btn.dataset.ai,format);
-      };
-    });
-  }
-
-  if(page === "online"){
-    $("refreshPlayers")?.addEventListener("click",refreshLobby);
-  }
-
-  if(page === "profile"){
-    $("themeSelect").value = loadTheme();
-
-    $("themeSelect").addEventListener("change",e=>{
-      applyTheme(e.target.value);
-    });
-
-    $("logoutBtn").addEventListener("click",logout);
-    $("deleteBtn").addEventListener("click",deleteAccount);
-  }
-}
-
-function updateHeader(){
-  if(!currentUser) return;
-
-  $("topUserName").textContent = currentUser.name;
-  $("topPoints").textContent = `${currentUser.points ?? 0} pts`;
-}
-
-function renderProfile(){
-  if(!currentUser) return;
-
-  $("profileName").textContent = currentUser.name;
-  $("profileAvatar").textContent =
-    currentUser.name.charAt(0).toUpperCase();
-
-  $("profilePoints").textContent = currentUser.points ?? 0;
-  $("profileTotal").textContent = currentUser.total ?? 0;
-  $("profileWins").textContent = currentUser.wins ?? 0;
-  $("profileLosses").textContent = currentUser.losses ?? 0;
-}
-
-function buildMiniGrid(){
-  const el = $("miniGrid");
-  if(!el) return;
-
-  const chars = ["X","","O","","X","","O","",""];
-
-  el.innerHTML = chars.map(x=>`<div>${x}</div>`).join("");
-}
-
-function toggleMobileMenu(){
-  $("mobileNav")?.classList.toggle("open");
-}
-//#endregion
-
-
-//#region LEADERBOARD
-function loadLeaderboard(){
-  dbOnValue(
-    dbRef(db,"players"),
-    snap=>{
-      const rows = [];
-
-      snap.forEach(child=>{
-        const p = child.val();
-
-        rows.push({
-          name:p.name || child.key,
-          points:Number(p.points || 0),
-          wins:Number(p.wins || 0)
-        });
-      });
-
-      rows.sort((a,b)=>{
-        if(b.points !== a.points) return b.points - a.points;
-        return b.wins - a.wins;
-      });
-
-      const target = $("leaderboardRows");
-      if(!target) return;
-
-      target.innerHTML = rows.slice(0,50).map((p,i)=>`
-        <div class="rank-row">
-          <span>${i+1}</span>
-          <span>${escapeHtml(p.name)}</span>
-          <span>${p.points}</span>
-          <span>${p.wins}</span>
-        </div>
-      `).join("");
-
-      if(!rows.length){
-        target.innerHTML =
-          `<div class="rank-row"><span>—</span><span>لا يوجد لاعبين</span><span>0</span><span>0</span></div>`;
-      }
-    }
-  );
-}
-//#endregion
-
-
-//#region ONLINE LOBBY
-function refreshLobby(){
-  if(!currentUser || currentPage !== "online") return;
-
-  dbGet(dbRef(db,"players"))
-    .then(snap=>{
-      const players = [];
-
-      snap.forEach(child=>{
-        if(child.key === currentUser.id) return;
-
-        const p = child.val();
-
-        if(p.status === "online"){
-          players.push({
-            id:child.key,
-            name:p.name || child.key,
-            points:Number(p.points || 0)
-          });
-        }
-      });
-
-      const list = $("playersList");
-      const count = $("onlineCount");
-
-      if(count) count.textContent = players.length;
-
-      if(!list) return;
-
-      if(!players.length){
-        list.innerHTML = `
-          <div class="player-row">
-            <div>
-              <strong>لا يوجد لاعبين الآن</strong>
-              <small>اضغط تحديث بعد قليل.</small>
-            </div>
-          </div>
-        `;
-        return;
-      }
-
-      list.innerHTML = players.map(p=>`
-        <div class="player-row">
-          <div>
-            <strong>${escapeHtml(p.name)}</strong>
-            <small>${p.points} pts • Online</small>
-          </div>
-          <button class="primary-btn challenge-btn"
-                  data-player="${p.id}"
-                  data-name="${escapeAttr(p.name)}">
-            تحدي
-          </button>
-        </div>
-      `).join("");
-
-      list.querySelectorAll(".challenge-btn").forEach(btn=>{
-        btn.onclick = ()=>{
-          sendChallenge(
-            btn.dataset.player,
-            btn.dataset.name,
-            $("onlineFormat")?.value || "1"
-          );
-        };
-      });
-
-    })
-    .catch(()=>{
-      showToast("تعذر تحميل اللاعبين","bad");
+// --- الخلفية المتحركة الهادئة والمريحة للعين ---
+const bgCanvas = document.getElementById('bgCanvas');
+const bgCtx = bgCanvas.getContext('2d');
+let bgParticles = [];
+function resizeBgCanvas() { const dpr = window.devicePixelRatio || 1; bgCanvas.width = window.innerWidth * dpr; bgCanvas.height = window.innerHeight * dpr; bgCtx.scale(dpr, dpr); }
+window.addEventListener('resize', resizeBgCanvas); resizeBgCanvas();
+
+for (let i = 0; i < 30; i++) {
+    bgParticles.push({
+        x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight,
+        size: Math.floor(Math.random() * 22) + 12,
+        speedY: (Math.random() * 0.5) + 0.2, speedX: (Math.random() - 0.5) * 0.2,
+        char: Math.random() > 0.5 ? 'X' : 'O',
+        alpha: Math.random() * 0.08 + 0.02, // هادئة جداً لا تسبب أي إزعاج بصري
+        rotation: Math.random() * Math.PI * 2, rotSpeed: (Math.random() - 0.5) * 0.008
     });
 }
-
-function watchChallenges(){
-  if(!currentUser) return;
-
-  dbOnValue(
-    dbRef(db,`challenges/${currentUser.id}`),
-    snap=>{
-      if(!snap.exists()) return;
-
-      const data = snap.val();
-
-      if(data.status === "pending"){
-        challengeData = data;
-
-        $("challengeTitle").textContent =
-          `تحدي من ${data.fromName || "لاعب"}`;
-
-        $("challengeText").textContent =
-          `${data.fromName || "لاعب"} يريد اللعب بنظام ${formatName(data.format)}`;
-
-        openOverlay("challengeOverlay");
-      }
-    }
-  );
-}
-
-async function sendChallenge(playerId,playerName,format){
-  if(!currentUser || !playerId) return;
-
-  try{
-    const matchId = dbPush(dbRef(db,"matches")).key;
-
-    const challenge = {
-      id:matchId,
-      from:currentUser.id,
-      fromName:currentUser.name,
-      to:playerId,
-      toName:playerName,
-      format,
-      target:targetWins(format),
-      status:"pending",
-      createdAt:Date.now()
-    };
-
-    await dbSet(
-      dbRef(db,`challenges/${playerId}`),
-      challenge
-    );
-
-    showToast(`تم إرسال التحدي إلى ${playerName}`,"good");
-
-  }catch(err){
-    console.error(err);
-    showToast("تعذر إرسال التحدي","bad");
-  }
-}
-
-async function acceptChallenge(){
-  if(!challengeData) return;
-
-  const data = challengeData;
-
-  try{
-    const match = {
-      id:data.id,
-      playerX:data.from,
-      playerXName:data.fromName,
-      playerO:currentUser.id,
-      playerOName:currentUser.name,
-      format:data.format,
-      target:data.target,
-      board:cloneBoard(),
-      wins:[...EMPTY_WINS],
-      turn:"X",
-      scores:{X:0,O:0},
-      status:"playing",
-      phase:"playing",
-      version:0,
-      lastMoveId:"",
-      createdAt:Date.now(),
-      updatedAt:Date.now()
-    };
-
-    await dbSet(dbRef(db,`matches/${data.id}`),match);
-
-    await dbUpdate(
-      dbRef(db,`challenges/${currentUser.id}`),
-      {status:"accepted",matchId:data.id}
-    );
-
-    closeOverlay("challengeOverlay");
-
-    openOnlineMatch(
-      data.id,
-      "O",
-      data.from,
-      data.fromName,
-      data.format
-    );
-
-  }catch(err){
-    console.error(err);
-    showToast("تعذر قبول التحدي","bad");
-  }
-}
-
-async function declineChallenge(){
-  if(!challengeData) return;
-
-  try{
-    await dbUpdate(
-      dbRef(db,`challenges/${currentUser.id}`),
-      {
-        status:"declined",
-        updatedAt:Date.now()
-      }
-    );
-  }catch{}
-
-  challengeData = null;
-  closeOverlay("challengeOverlay");
-}
-//#endregion
-
-
-//#region OFFLINE GAME
-function startOffline(ai,format){
-  game.mode = "offline";
-  game.ai = ai;
-  game.format = format;
-  game.target = targetWins(format);
-  game.role = "X";
-  game.opponentId = "AI";
-  game.opponentName = ai === "impossible"
-    ? "Grandmaster AI"
-    : `${ai.toUpperCase()} AI`;
-  game.matchId = "";
-  game.scores = {X:0,O:0};
-
-  resetRoundLocal();
-
-  showGameScreen();
-
-  playSound("start");
-}
-
-function resetRoundLocal(){
-  clearTimeout(aiMoveTimer);
-
-  game.board = cloneBoard();
-  game.wins = [...EMPTY_WINS];
-  game.turn = "X";
-  game.status = "playing";
-  game.winner = "";
-  game.phase = "playing";
-  game.lastMoveId = "";
-
-  resultShown = false;
-
-  renderGame();
-
-  if(game.mode === "offline" && game.turn === "O"){
-    scheduleAI();
-  }
-}
-
-function scheduleAI(){
-  clearTimeout(aiMoveTimer);
-
-  const delay =
-    game.ai === "easy" ? 420 :
-    game.ai === "medium" ? 520 :
-    650;
-
-  aiMoveTimer = setTimeout(()=>{
-    if(game.status !== "playing") return;
-    if(game.turn !== "O") return;
-
-    const move = chooseAIMove();
-
-    if(move){
-      makeMove(move.board,move.cell,"O");
-    }
-  },delay);
-}
-
-function chooseAIMove(){
-  const legal = getLegalMoves(game.board,game.wins);
-
-  if(!legal.length) return null;
-
-  if(game.ai === "easy"){
-    return easyMove(legal);
-  }
-
-  if(game.ai === "medium"){
-    return mediumMove(legal);
-  }
-
-  return grandmasterMove(legal);
-}
-
-function easyMove(legal){
-  const win = findWinningMove("O",legal);
-  if(win && Math.random() > .15) return win;
-
-  const block = findWinningMove("X",legal);
-  if(block && Math.random() > .18) return block;
-
-  const center = legal.find(m=>m.cell === 4);
-  if(center && Math.random() > .35) return center;
-
-  return legal[Math.floor(Math.random()*legal.length)];
-}
-
-function mediumMove(legal){
-  const win = findWinningMove("O",legal);
-  if(win) return win;
-
-  const block = findWinningMove("X",legal);
-  if(block) return block;
-
-  const scored = legal.map(move=>({
-    move,
-    score:scoreMove(move,"O")
-  }));
-
-  scored.sort((a,b)=>b.score-a.score);
-
-  return scored[0]?.move || legal[0];
-}
-
-function grandmasterMove(legal){
-  const win = findWinningMove("O",legal);
-  if(win) return win;
-
-  const block = findWinningMove("X",legal);
-  if(block) return block;
-
-  let best = null;
-  let bestScore = -Infinity;
-
-  for(const move of legal){
-    const score =
-      scoreMove(move,"O") +
-      localBoardPotential(move.board,"O") * 2 +
-      nextBoardPressure(move) * 1.5;
-
-    if(score > bestScore){
-      bestScore = score;
-      best = move;
-    }
-  }
-
-  return best || legal[0];
-}
-
-function getLegalMoves(board,wins){
-  const result = [];
-
-  const forced = game.turn === "X" ? game.lastMoveId : game.lastMoveId;
-  let forcedBoard = null;
-
-  if(game.lastMoveId){
-    const n = Number(game.lastMoveId);
-    if(Number.isInteger(n) && n >= 0 && n < 9){
-      if(!wins[n] && board[n].some(v=>!v)){
-        forcedBoard = n;
-      }
-    }
-  }
-
-  for(let b=0;b<9;b++){
-    if(wins[b]) continue;
-    if(forcedBoard !== null && b !== forcedBoard) continue;
-
-    for(let c=0;c<9;c++){
-      if(!board[b][c]){
-        result.push({board:b,cell:c});
-      }
-    }
-  }
-
-  if(!result.length && forcedBoard !== null){
-    for(let b=0;b<9;b++){
-      if(wins[b]) continue;
-
-      for(let c=0;c<9;c++){
-        if(!board[b][c]){
-          result.push({board:b,cell:c});
-        }
-      }
-    }
-  }
-
-  return result;
-}
-
-function findWinningMove(symbol,legal){
-  for(const move of legal){
-    const test = clone(game.board);
-    test[move.board][move.cell] = symbol;
-
-    if(checkLocalWinner(test[move.board]) === symbol){
-      return move;
-    }
-
-    const localWins = [...game.wins];
-
-    if(checkLocalWinner(test[move.board])){
-      localWins[move.board] = symbol;
-
-      if(checkUltimateWinner(localWins) === symbol){
-        return move;
-      }
-    }
-  }
-
-  return null;
-}
-
-function scoreMove(move,symbol){
-  let score = 0;
-
-  if(move.cell === 4) score += 5;
-  if([0,2,6,8].includes(move.cell)) score += 3;
-
-  const board = game.board[move.board];
-
-  const own = board.filter(v=>v===symbol).length;
-  const opp = board.filter(v=>v && v!==symbol).length;
-
-  score += own * 2;
-  score -= opp;
-
-  if(move.board === move.cell) score += 3;
-
-  return score;
-}
-
-function localBoardPotential(move,symbol){
-  const board = game.board[move.board];
-  return board.filter(v=>v===symbol).length;
-}
-
-function nextBoardPressure(move){
-  const next = move.cell;
-
-  if(game.wins[next]) return 3;
-  if(game.board[next].every(Boolean)) return 2;
-
-  return 1;
-}
-//#endregion
-
-
-//#region MOVE ENGINE
-function validMove(boardIndex,cellIndex){
-  if(game.status !== "playing") return false;
-  if(game.phase !== "playing") return false;
-
-  if(!Number.isInteger(boardIndex) || !Number.isInteger(cellIndex)){
-    return false;
-  }
-
-  if(game.board[boardIndex][cellIndex]) return false;
-  if(game.wins[boardIndex]) return false;
-
-  if(game.turn !== game.role) return false;
-
-  if(game.lastMoveId !== ""){
-    const forced = Number(game.lastMoveId);
-
-    if(
-      Number.isInteger(forced) &&
-      forced >= 0 &&
-      forced < 9 &&
-      !game.wins[forced] &&
-      game.board[forced].some(v=>!v) &&
-      boardIndex !== forced
-    ){
-      return false;
-    }
-  }
-
-  return true;
-}
-
-function makeMove(boardIndex,cellIndex,symbol){
-  if(game.status !== "playing") return;
-  if(game.board[boardIndex][cellIndex]) return;
-
-  game.board[boardIndex][cellIndex] = symbol;
-
-  const localWinner = checkLocalWinner(game.board[boardIndex]);
-
-  if(localWinner && !game.wins[boardIndex]){
-    game.wins[boardIndex] = localWinner;
-  }
-
-  const ultimateWinner = checkUltimateWinner(game.wins);
-
-  if(ultimateWinner){
-    game.status = "finished";
-    game.winner = ultimateWinner;
-    game.phase = "result";
-
-    renderGame();
-
-    finishRound(ultimateWinner);
-    return;
-  }
-
-  if(game.board.every((b,i)=>game.wins[i] || b.every(Boolean))){
-    game.status = "finished";
-    game.winner = "DRAW";
-    game.phase = "result";
-
-    renderGame();
-
-    finishRound("DRAW");
-    return;
-  }
-
-  game.lastMoveId = String(cellIndex);
-  game.turn = symbol === "X" ? "O" : "X";
-
-  playSound("click");
-
-  renderGame();
-
-  if(game.mode === "offline" && game.turn === "O"){
-    scheduleAI();
-  }
-
-  if(game.mode === "online"){
-    publishMove();
-  }
-}
-
-function checkLocalWinner(board){
-  for(const [a,b,c] of WIN_LINES){
-    if(board[a] && board[a] === board[b] && board[a] === board[c]){
-      return board[a];
-    }
-  }
-
-  return "";
-}
-
-function checkUltimateWinner(wins){
-  return checkLocalWinner(wins);
-}
-//#endregion
-
-
-//#region GAME RENDER
-function showGameScreen(){
-  $("gameScreen").classList.remove("hidden");
-  renderGame();
-}
-
-function hideGameScreen(){
-  $("gameScreen").classList.add("hidden");
-  closeOverlay("resultOverlay");
-  closeOverlay("disconnectOverlay");
-
-  clearTimeout(aiMoveTimer);
-  clearInterval(disconnectTimer);
-}
-
-function renderGame(){
-  if(!$("ultimateBoard")) return;
-
-  $("gameTitle").textContent =
-    game.mode === "offline"
-      ? `ضد ${game.opponentName}`
-      : `Online • ${formatName(game.format)}`;
-
-  $("gameOpponent").textContent =
-    `vs ${game.opponentName || "Opponent"}`;
-
-  $("scoreX").textContent = game.scores.X;
-  $("scoreO").textContent = game.scores.O;
-
-  $("turnText").textContent = game.turn;
-
-  const root = $("ultimateBoard");
-  root.innerHTML = "";
-
-  for(let b=0;b<9;b++){
-    const boardEl = document.createElement("div");
-    boardEl.className = "local-board";
-
-    const forced =
-      game.lastMoveId !== "" &&
-      Number(game.lastMoveId) === b &&
-      !game.wins[b] &&
-      game.board[b].some(v=>!v);
-
-    if(forced) boardEl.classList.add("active");
-    if(game.wins[b]) boardEl.classList.add("locked");
-
-    for(let c=0;c<9;c++){
-      const cell = document.createElement("button");
-
-      cell.className = "cell";
-
-      const value = game.board[b][c];
-
-      if(value){
-        cell.textContent = value;
-        cell.classList.add(value.toLowerCase());
-      }
-
-      cell.disabled =
-        !validMove(b,c) ||
-        Boolean(value);
-
-      cell.onclick = ()=>{
-        if(validMove(b,c)){
-          makeMove(b,c,game.role);
-        }
-      };
-
-      boardEl.appendChild(cell);
-    }
-
-    if(game.wins[b]){
-      const overlay = document.createElement("div");
-      overlay.className = "local-overlay";
-      overlay.textContent = game.wins[b];
-      overlay.style.color =
-        game.wins[b] === "X"
-          ? "#67e8f9"
-          : "#f9a8d4";
-
-      boardEl.appendChild(overlay);
-    }
-
-    root.appendChild(boardEl);
-  }
-}
-//#endregion
-
-
-//#region ROUND RESULT
-async function finishRound(winner){
-  if(resultShown) return;
-
-  resultShown = true;
-
-  const resultId =
-    game.matchId
-      ? `${game.matchId}-${game.scores.X}-${game.scores.O}-${Date.now()}`
-      : `offline-${Date.now()}`;
-
-  settledResultId = resultId;
-
-  let myResult = "draw";
-
-  if(winner === game.role){
-    myResult = "win";
-  }else if(winner !== "DRAW"){
-    myResult = "loss";
-  }
-
-  await settleStats(myResult);
-
-  if(winner === game.role){
-    game.scores[game.role]++;
-  }else if(winner !== "DRAW"){
-    const other = game.role === "X" ? "O" : "X";
-    game.scores[other]++;
-  }
-
-  renderGame();
-
-  if(game.mode === "online"){
-    await writeOnlineResult(winner,resultId);
-  }
-
-  showResult(winner);
-}
-
-async function settleStats(result){
-  if(!currentUser) return;
-
-  if(result === "win"){
-    currentUser.points += 3;
-    currentUser.wins++;
-  }else if(result === "loss"){
-    currentUser.points = Math.max(0,currentUser.points - 1);
-    currentUser.losses++;
-  }else{
-    currentUser.points += 1;
-    currentUser.draws++;
-  }
-
-  currentUser.total++;
-
-  await savePlayerStats();
-}
-
-async function settleRemoteResult(result){
-  if(!result || !result.id) return;
-  if(settledResultId === result.id) return;
-
-  settledResultId = result.id;
-
-  let myResult = "draw";
-
-  if(result.winner === game.role){
-    myResult = "win";
-  }else if(result.winner !== "DRAW"){
-    myResult = "loss";
-  }
-
-  await settleStats(myResult);
-}
-
-function showResult(winner){
-  if(game.mode === "online"){
-    if(winner === game.role){
-      $("resultTitle").textContent = "🏆 فوز!";
-      $("resultText").textContent = "أنت فزت بالجولة.";
-      playSound("win");
-    }else if(winner === "DRAW"){
-      $("resultTitle").textContent = "تعادل";
-      $("resultText").textContent = "الجولة انتهت بالتعادل.";
-      playSound("bell");
-    }else{
-      $("resultTitle").textContent = "الجولة انتهت";
-      $("resultText").textContent = "الخصم فاز بالجولة.";
-      playSound("lose");
-    }
-
-    $("acceptRematch").textContent =
-      game.scores.X >= game.target ||
-      game.scores.O >= game.target
-        ? "مباراة جديدة"
-        : "الجولة التالية";
-
-    openOverlay("resultOverlay");
-    return;
-  }
-
-  if(winner === "X"){
-    $("resultTitle").textContent = "🏆 فوز!";
-    $("resultText").textContent = "أحسنت! فزت بالجولة.";
-    playSound("win");
-  }else if(winner === "DRAW"){
-    $("resultTitle").textContent = "تعادل";
-    $("resultText").textContent = "الجولة انتهت بالتعادل.";
-    playSound("bell");
-  }else{
-    $("resultTitle").textContent = "انتهت الجولة";
-    $("resultText").textContent = "الذكاء الاصطناعي فاز.";
-    playSound("lose");
-  }
-
-  const matchFinished =
-    game.format === "1" ||
-    game.target === Infinity ||
-    game.scores.X >= game.target ||
-    game.scores.O >= game.target;
-
-  $("acceptRematch").textContent =
-    matchFinished ? "مباراة جديدة" : "الجولة التالية";
-
-  openOverlay("resultOverlay");
-}
-//#endregion
-
-
-//#region ONLINE MATCH
-function openOnlineMatch(matchId,role,opponentId,opponentName,format){
-  game.mode = "online";
-  game.matchId = matchId;
-  game.role = role;
-  game.opponentId = opponentId;
-  game.opponentName = opponentName;
-  game.format = format;
-  game.target = targetWins(format);
-  game.phase = "playing";
-  resultShown = false;
-
-  showGameScreen();
-  watchMatch(matchId);
-}
-
-function watchMatch(matchId){
-  if(!matchId) return;
-
-  dbOnValue(
-    dbRef(db,`matches/${matchId}`),
-    async snap=>{
-      if(!snap.exists()){
-        endLocalMatch("المباراة غير موجودة.");
-        return;
-      }
-
-      const d = snap.val();
-
-      game.board = d.board || cloneBoard();
-      game.wins = d.wins || [...EMPTY_WINS];
-      game.turn = d.turn || "X";
-      game.scores = d.scores || {X:0,O:0};
-      game.target = Number(d.target ?? targetWins(d.format));
-      game.format = d.format || "1";
-
-      if(d.status === "closed"){
-        endLocalMatch(d.closedMessage || "تم إنهاء المباراة.");
-        return;
-      }
-
-      if(d.status === "playing"){
-        game.status = "playing";
-
-        if(d.phase === "result" && d.result){
-          game.status = "finished";
-          game.phase = "result";
-
-          await settleRemoteResult(d.result);
-
-          if(!resultShown){
-            showResult(d.result.winner);
-            resultShown = true;
-          }
-
-          return;
-        }
-
-        game.phase = "playing";
-      }
-
-      if(d.status === "finished" && d.result){
-        game.status = "finished";
-        game.phase = "result";
-
-        await settleRemoteResult(d.result);
-
-        if(!resultShown){
-          showResult(d.result.winner);
-          resultShown = true;
-        }
-
-        return;
-      }
-
-      renderGame();
-    }
-  );
-}
-
-async function publishMove(){
-  if(!game.matchId) return;
-
-  const matchRef = dbRef(db,`matches/${game.matchId}`);
-
-  const version = Date.now();
-  const moveId = `${currentUser.id}-${version}`;
-
-  game.lastMoveId = game.lastMoveId || "";
-
-  try{
-    await dbUpdate(matchRef,{
-      board:clone(game.board),
-      wins:[...game.wins],
-      turn:game.turn,
-      scores:clone(game.scores),
-      status:"playing",
-      phase:"playing",
-      version,
-      lastMoveId:moveId,
-      updatedAt:version
+function animateBgCanvas() {
+    bgCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    const computedStyle = getComputedStyle(document.documentElement);
+    const primaryColor = computedStyle.getPropertyValue('--primary').trim() || '#06b6d4';
+    bgParticles.forEach(p => {
+        p.y -= p.speedY; p.x += p.speedX; p.rotation += p.rotSpeed;
+        if (p.y < -50) { p.y = window.innerHeight + 50; p.x = Math.random() * window.innerWidth; }
+        bgCtx.save(); bgCtx.translate(p.x, p.y); bgCtx.rotate(p.rotation); bgCtx.font = `bold ${p.size}px sans-serif`; bgCtx.fillStyle = primaryColor; bgCtx.globalAlpha = p.alpha; bgCtx.textAlign = 'center'; bgCtx.textBaseline = 'middle'; bgCtx.fillText(p.char, 0, 0); bgCtx.restore();
     });
-  }catch(err){
-    console.error(err);
-    showToast("تعذر مزامنة الحركة","bad");
-  }
+    requestAnimationFrame(animateBgCanvas);
 }
-
-async function writeOnlineResult(winner,resultId){
-  if(!game.matchId) return;
-
-  const result = {
-    id:resultId,
-    winner,
-    scores:clone(game.scores),
-    at:Date.now()
-  };
-
-  try{
-    await dbUpdate(
-      dbRef(db,`matches/${game.matchId}`),
-      {
-        board:clone(game.board),
-        wins:[...game.wins],
-        scores:clone(game.scores),
-        turn:game.turn,
-        status:"playing",
-        phase:"result",
-        result,
-        updatedAt:Date.now()
-      }
-    );
-  }catch(err){
-    console.error(err);
-  }
-}
-
-async function requestRestart(){
-  if(game.mode !== "online" || !game.matchId) return;
-
-  try{
-    await dbUpdate(
-      dbRef(db,`matches/${game.matchId}/restart`),
-      {
-        requestedBy:currentUser.id,
-        status:"pending",
-        at:Date.now()
-      }
-    );
-
-    showToast("تم إرسال طلب إعادة الجولة","good");
-  }catch{
-    showToast("تعذر إرسال طلب الإعادة","bad");
-  }
-}
-
-async function acceptRestart(){
-  if(!game.matchId) return;
-
-  await dbUpdate(
-    dbRef(db,`matches/${game.matchId}/restart`),
-    {
-      status:"accepted",
-      acceptedBy:currentUser.id,
-      at:Date.now()
-    }
-  );
-
-  closeOverlay("restartOverlay");
-}
-
-async function declineRestart(){
-  if(!game.matchId) return;
-
-  await dbUpdate(
-    dbRef(db,`matches/${game.matchId}/restart`),
-    {
-      status:"declined",
-      declinedBy:currentUser.id,
-      at:Date.now()
-    }
-  );
-
-  closeOverlay("restartOverlay");
-}
-
-async function requestRematch(){
-  if(game.mode !== "online" || !game.matchId) return;
-
-  const finalMatch =
-    game.target !== Infinity &&
-    (game.scores.X >= game.target || game.scores.O >= game.target);
-
-  if(finalMatch || game.format === "1"){
-    await dbUpdate(
-      dbRef(db,`matches/${game.matchId}/rematch`),
-      {
-        status:"pending",
-        requestedBy:currentUser.id,
-        at:Date.now()
-      }
-    );
-
-    $("acceptRematch").disabled = true;
-    $("acceptRematch").textContent = "في انتظار الخصم...";
-    return;
-  }
-
-  await dbUpdate(
-    dbRef(db,`matches/${game.matchId}/rematch`),
-    {
-      status:"pending",
-      requestedBy:currentUser.id,
-      at:Date.now()
-    }
-  );
-
-  $("acceptRematch").disabled = true;
-  $("acceptRematch").textContent = "في انتظار الخصم...";
-}
-
-async function endMatch(message="تم إنهاء المباراة."){
-  if(game.mode !== "online" || !game.matchId){
-    endLocalMatch(message);
-    return;
-  }
-
-  try{
-    await dbUpdate(
-      dbRef(db,`matches/${game.matchId}`),
-      {
-        status:"closed",
-        phase:"closed",
-        closedBy:currentUser.id,
-        closedMessage:message,
-        updatedAt:Date.now()
-      }
-    );
-  }catch{}
-
-  endLocalMatch(message);
-}
-
-function endLocalMatch(message){
-  clearTimeout(aiMoveTimer);
-  clearInterval(disconnectTimer);
-
-  closeOverlay("challengeOverlay");
-  closeOverlay("restartOverlay");
-  closeOverlay("resultOverlay");
-  closeOverlay("disconnectOverlay");
-
-  hideGameScreen();
-  navigate("home");
-
-  if(message){
-    showToast(message);
-  }
-}
-//#endregion
-
-
-//#region ONLINE STATE WATCHERS
-function watchRestart(){
-  if(!game.matchId) return;
-
-  dbOnValue(
-    dbRef(db,`matches/${game.matchId}/restart`),
-    async snap=>{
-      if(!snap.exists()) return;
-
-      const d = snap.val();
-
-      if(
-        d.status === "pending" &&
-        d.requestedBy !== currentUser.id
-      ){
-        $("restartText").textContent =
-          "الخصم يطلب إعادة الجولة الحالية.";
-
-        openOverlay("restartOverlay");
-      }
-
-      if(
-        d.status === "accepted" &&
-        d.acceptedBy !== currentUser.id
-      ){
-        await resetOnlineRound();
-      }
-
-      if(d.status === "declined"){
-        closeOverlay("restartOverlay");
-        showToast("الخصم رفض إعادة الجولة","bad");
-      }
-    }
-  );
-}
-
-async function resetOnlineRound(){
-  if(!game.matchId) return;
-
-  game.board = cloneBoard();
-  game.wins = [...EMPTY_WINS];
-  game.turn = "X";
-  game.status = "playing";
-  game.phase = "playing";
-  game.lastMoveId = "";
-  resultShown = false;
-
-  closeOverlay("resultOverlay");
-  closeOverlay("restartOverlay");
-
-  await dbUpdate(
-    dbRef(db,`matches/${game.matchId}`),
-    {
-      board:clone(game.board),
-      wins:[...game.wins],
-      turn:"X",
-      status:"playing",
-      phase:"playing",
-      result:null,
-      updatedAt:Date.now()
-    }
-  );
-
-  renderGame();
-}
-
-function watchRematch(){
-  if(!game.matchId) return;
-
-  dbOnValue(
-    dbRef(db,`matches/${game.matchId}/rematch`),
-    async snap=>{
-      if(!snap.exists()) return;
-
-      const d = snap.val();
-
-      if(
-        d.status === "pending" &&
-        d.requestedBy !== currentUser.id
-      ){
-        $("resultTitle").textContent = "الخصم يريد جولة جديدة";
-        $("resultText").textContent =
-          "وافق لبدء جولة جديدة بنفس نظام المباراة.";
-
-        $("acceptRematch").disabled = false;
-        $("acceptRematch").textContent = "قبول";
-
-        openOverlay("resultOverlay");
-      }
-
-      if(
-        d.status === "accepted" &&
-        d.acceptedBy !== currentUser.id
-      ){
-        await resetOnlineRound();
-      }
-    }
-  );
-}
-//#endregion
-
-
-//#region DISCONNECT
-function startDisconnectCountdown(){
-  clearInterval(disconnectTimer);
-
-  let left = DISCONNECT_SECONDS;
-
-  $("disconnectCountdown").textContent = left;
-  openOverlay("disconnectOverlay");
-
-  disconnectTimer = setInterval(()=>{
-    left--;
-
-    $("disconnectCountdown").textContent = Math.max(0,left);
-
-    if(left <= 0){
-      clearInterval(disconnectTimer);
-      endMatch("انتهت مهلة إعادة الاتصال.");
-    }
-  },1000);
-}
-
-function stopDisconnectCountdown(){
-  clearInterval(disconnectTimer);
-  disconnectTimer = null;
-  closeOverlay("disconnectOverlay");
-}
-
-function watchOpponentPresence(){
-  if(!game.opponentId) return;
-
-  dbOnValue(
-    dbRef(db,`players/${game.opponentId}/status`),
-    snap=>{
-      const status = snap.val();
-
-      if(game.mode !== "online") return;
-
-      if(status === "offline"){
-        startDisconnectCountdown();
-      }else{
-        stopDisconnectCountdown();
-      }
-    }
-  );
-}
-//#endregion
-
-
-//#region GAME BUTTONS
-function leaveGame(){
-  if(game.mode === "online"){
-    const ok = confirm("الخروج سيُنهي المباراة للطرفين. هل أنت متأكد؟");
-
-    if(!ok) return;
-
-    endMatch("قام أحد اللاعبين بإنهاء المباراة.");
-    return;
-  }
-
-  hideGameScreen();
-  navigate("home");
-}
-
-function restartGame(){
-  if(game.mode === "offline"){
-    resetRoundLocal();
-    return;
-  }
-
-  requestRestart();
-}
-
-function acceptRematchClick(){
-  if(game.mode !== "online"){
-    resetRoundLocal();
-    closeOverlay("resultOverlay");
-    return;
-  }
-
-  requestRematch();
-}
-
-async function exitResult(){
-  if(game.mode === "online"){
-    await endMatch("انتهت المباراة.");
-  }else{
-    closeOverlay("resultOverlay");
-    hideGameScreen();
-    navigate("home");
-  }
-}
-//#endregion
-
-
-//#region EVENTS
-function bindGlobalEvents(){
-  $("authForm").addEventListener("submit",authSubmit);
-
-  $("authSwitch").addEventListener("click",()=>{
-    setAuthMode(authMode === "login" ? "register" : "login");
-  });
-
-  $("mobileMenuBtn").addEventListener("click",toggleMobileMenu);
-
-  $("leaveGame").addEventListener("click",leaveGame);
-  $("restartGame").addEventListener("click",restartGame);
-  $("endGame").addEventListener("click",()=>{
-    if(game.mode === "online"){
-      endMatch("قام أحد اللاعبين بإنهاء المباراة.");
-    }else{
-      hideGameScreen();
-      navigate("home");
-    }
-  });
-
-  $("acceptChallenge").addEventListener("click",acceptChallenge);
-  $("declineChallenge").addEventListener("click",declineChallenge);
-
-  $("acceptRestart").addEventListener("click",acceptRestart);
-  $("declineRestart").addEventListener("click",declineRestart);
-
-  $("acceptRematch").addEventListener("click",acceptRematchClick);
-  $("exitResult").addEventListener("click",exitResult);
-
-  $("disconnectLeave").addEventListener("click",()=>{
-    endMatch("غادرت المباراة.");
-  });
-
-  $("noticeOk").addEventListener("click",()=>{
-    closeOverlay("noticeOverlay");
-  });
-
-  window.addEventListener("beforeunload",()=>{
-    if(currentUser && game.mode === "online"){
-      try{
-        dbUpdate(
-          dbRef(db,`players/${currentUser.id}`),
-          {
-            status:"offline",
-            updatedAt:Date.now()
-          }
+animateBgCanvas();
+
+// --- العناصر والأساسيات ---
+const ultimateBoard = document.getElementById('ultimateBoard');
+const turnIndicator = document.getElementById('turnIndicator');
+const resetBtn = document.getElementById('resetBtn');
+const scoreXEl = document.getElementById('scoreX');
+const scoreOEl = document.getElementById('scoreO');
+const themeSelector = document.getElementById('themeSelector');
+const htmlRoot = document.getElementById('htmlRoot');
+
+const victoryModal = document.getElementById('victoryModal');
+const victoryTitle = document.getElementById('victoryTitle');
+const victoryText = document.getElementById('victoryText');
+const acceptRematchBtn = document.getElementById('acceptRematchBtn');
+const declineRematchBtn = document.getElementById('declineRematchBtn');
+
+const resetRequestModal = document.getElementById('resetRequestModal');
+const acceptResetBtn = document.getElementById('acceptResetBtn');
+const declineResetBtn = document.getElementById('declineResetBtn');
+
+const disconnectModal = document.getElementById('disconnectModal');
+const disconnectTimerEl = document.getElementById('disconnectTimer');
+const forceLeaveBtn = document.getElementById('forceLeaveBtn');
+
+const connectionStatus = document.getElementById('connectionStatus');
+const connDot = document.getElementById('connDot');
+const connText = document.getElementById('connText');
+
+const nameModal = document.getElementById('nameModal');
+const playerNameInput = document.getElementById('playerNameInput');
+const playerPinInput = document.getElementById('playerPinInput');
+const authSubmitBtn = document.getElementById('authSubmitBtn');
+const authSwitchBtn = document.getElementById('authSwitchBtn');
+const authModalTitle = document.getElementById('authModalTitle');
+const authModalDesc = document.getElementById('authModalDesc');
+
+const mainMenu = document.getElementById('mainMenu');
+const menuUsername = document.getElementById('menuUsername');
+const userPoints = document.getElementById('userPoints');
+const aiDifficultyModal = document.getElementById('aiDifficultyModal');
+const pveMenuBtn = document.getElementById('pveMenuBtn');
+const cancelAiModalBtn = document.getElementById('cancelAiModalBtn');
+
+const onlineLobbyModal = document.getElementById('onlineLobbyModal');
+const onlineLobbyMenuBtn = document.getElementById('onlineLobbyMenuBtn');
+const closeOnlineLobbyBtn = document.getElementById('closeOnlineLobbyBtn');
+const refreshLobbyBtn = document.getElementById('refreshLobbyBtn');
+const onlinePlayersList = document.getElementById('onlinePlayersList');
+
+const challengeModal = document.getElementById('challengeModal');
+const challengeTitle = document.getElementById('challengeTitle');
+const challengeText = document.getElementById('challengeText');
+const acceptChallengeBtn = document.getElementById('acceptChallengeBtn');
+const rejectChallengeBtn = document.getElementById('rejectChallengeBtn');
+const cancelChallengeBtn = document.getElementById('cancelChallengeBtn');
+
+const rulesModal = document.getElementById('rulesModal');
+const menuRulesBtn = document.getElementById('menuRulesBtn');
+const closeRulesBtn = document.getElementById('closeRulesBtn');
+const statsModal = document.getElementById('statsModal');
+const statsMenuBtn = document.getElementById('statsMenuBtn');
+const closeStatsBtn = document.getElementById('closeStatsBtn');
+const statPoints = document.getElementById('statPoints');
+const statTotal = document.getElementById('statTotal');
+const profileNameDisplay = document.getElementById('profileNameDisplay');
+const deleteAccountBtn = document.getElementById('deleteAccountBtn');
+const logoutBtn = document.getElementById('logoutBtn');
+const homeBtn = document.getElementById('homeBtn');
+const matchFormatSelect = document.getElementById('matchFormatSelect');
+const gameModeBadge = document.getElementById('gameModeBadge');
+
+let gameMode = 'pve'; 
+let aiDifficulty = 'impossible'; 
+let currentPlayer = 'X';
+let activeBoardIndex = null; 
+let boardWins = Array(9).fill(null); 
+let boardStates = Array(9).fill().map(() => Array(9).fill(''));
+
+let playerName = '';
+let playerPin = '';
+let playerId = null;
+let clientSessionId = 's_' + Math.random().toString(36).substring(2, 9);
+let userArenaPoints = 10;
+let stats = { total: 0, wins: 0, losses: 0 };
+let scores = { X: 0, O: 0 };
+let currentTheme = localStorage.getItem('ultimate_theme') || 'theme-cyberpunk';
+
+let currentMatchId = null;
+let myRole = 'X';
+let opponentName = 'Opponent';
+let opponentId = null;
+let activeMatchUnsubscribe = null;
+let activeChallengeRef = null;
+let myChallengeStatusListener = null;
+let sessionListenerRef = null;
+let opponentStatusUnsubscribe = null;
+let disconnectTimerInterval = null;
+
+let currentFormat = '1';
+let targetWins = 1;
+
+htmlRoot.className = currentTheme; themeSelector.value = currentTheme;
+themeSelector.addEventListener('change', (e) => { playSound('click'); currentTheme = e.target.value; htmlRoot.className = currentTheme; localStorage.setItem('ultimate_theme', currentTheme); if (window.db && playerId) window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { theme: currentTheme }); });
+function getTargetWins(formatStr) { if (formatStr === '3') return 2; if (formatStr === '5') return 3; if (formatStr === 'infinity') return Infinity; return 1; }
+
+// --- تنبيهات النظام ---
+let customModal = document.createElement('div'); customModal.id = 'customModal'; customModal.className = 'fixed inset-0 bg-black/80 z-[80] hidden items-center justify-center p-4 backdrop-blur-md';
+customModal.innerHTML = `<div class="modal-box border p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl flex flex-col gap-4 relative z-10"><h2 id="customModalTitle" class="font-black text-xl text-cyan-400">Notice</h2><p id="customModalText" class="text-sm text-slate-200 leading-relaxed"></p><div id="customModalButtons" class="flex gap-2 mt-2"><button id="customModalOkBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white cursor-pointer">OK</button></div></div>`; document.body.appendChild(customModal);
+function showCustomAlert(title, text, onClose = null) { playSound('click'); document.getElementById('customModalTitle').textContent = title; document.getElementById('customModalText').textContent = text; document.getElementById('customModalButtons').innerHTML = `<button id="customModalOkBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white cursor-pointer">OK</button>`; customModal.style.display = 'flex'; document.getElementById('customModalOkBtn').onclick = () => { customModal.style.display = 'none'; if (onClose) onClose(); }; }
+function showCustomConfirm(title, text, onConfirm, onCancel = null) { playSound('click'); document.getElementById('customModalTitle').textContent = title; document.getElementById('customModalText').textContent = text; document.getElementById('customModalButtons').innerHTML = `<button id="customModalConfirmBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 hover:bg-cyan-500 text-white cursor-pointer">Yes</button><button id="customModalCancelBtn" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-3 rounded-xl text-sm cursor-pointer">Cancel</button>`; customModal.style.display = 'flex'; document.getElementById('customModalConfirmBtn').onclick = () => { customModal.style.display = 'none'; onConfirm(); }; document.getElementById('customModalCancelBtn').onclick = () => { customModal.style.display = 'none'; if (onCancel) onCancel(); }; }
+
+menuRulesBtn.addEventListener('click', () => { playSound('click'); rulesModal.style.display = 'flex'; });
+closeRulesBtn.addEventListener('click', () => { playSound('click'); rulesModal.style.display = 'none'; });
+if (statsMenuBtn) { statsMenuBtn.addEventListener('click', () => { playSound('click'); profileNameDisplay.textContent = playerName; statPoints.textContent = userArenaPoints; statTotal.textContent = stats.total; fetchGlobalLeaderboard(); statsModal.style.display = 'flex'; }); }
+if (closeStatsBtn) { closeStatsBtn.addEventListener('click', () => { playSound('click'); statsModal.style.display = 'none'; }); }
+logoutBtn.addEventListener('click', () => { playSound('click'); showCustomConfirm('Logout', 'Are you sure you want to sign out?', async () => { if (window.db && playerId) await window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { status: 'offline' }); localStorage.clear(); location.reload(); }, () => {}); });
+deleteAccountBtn.addEventListener('click', () => { playSound('click'); showCustomConfirm('Delete Account', 'Are you sure you want to delete your account permanently?', async () => { if (window.db && playerId) { await window.dbRemove(window.dbRef(window.db, 'players/' + playerId)); await window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId)); } localStorage.clear(); location.reload(); }, () => {}); });
+
+// إصلاح زر العودة للمينيو (Menu Button & Cancel Logic)
+homeBtn.addEventListener('click', () => { 
+    playSound('click'); 
+    if (gameMode === 'online-p2p' && currentMatchId) {
+        showCustomConfirm('Leave Match?', 'Are you sure you want to leave the current match? This will end the game and close the room.', 
+            () => { leaveRoom(); }, // Yes: leaves room
+            () => {} // Cancel: does nothing, stays in game safely!
         );
-      }catch{}
+    } else {
+        mainMenu.style.display = 'flex'; 
     }
-  });
-}
-//#endregion
+});
 
+let leaderboardList = document.getElementById('leaderboardList');
+if (!leaderboardList && statsModal) { let lbContainer = document.createElement('div'); lbContainer.className = 'mt-4 text-left'; lbContainer.innerHTML = `<h3 class="font-bold text-xs mb-2 text-cyan-400 uppercase tracking-wider">🏆 Global Arena Leaderboard</h3><div id="leaderboardList" class="flex flex-col gap-1.5 max-h-36 overflow-y-auto bg-black/50 p-2.5 rounded-xl border border-white/10 text-xs"><p class="text-center text-slate-400 py-2">Loading leaderboard...</p></div>`; statsModal.querySelector('.modal-box').appendChild(lbContainer); leaderboardList = document.getElementById('leaderboardList'); }
 
-//#region ESCAPE
-function escapeHtml(value){
-  return String(value)
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&#039;");
-}
+function setupPresence() { if (!window.db) return; window.dbOnValue(window.dbRef(window.db, ".info/connected"), (snap) => { if (snap.val() === true && playerName && playerId) registerOnlinePresence(gameMode === 'online-p2p' ? 'in-game' : 'online'); }); }
+function registerOnlinePresence(status = 'online') { if (!window.db || !playerName || !playerId) return; const userRef = window.dbRef(window.db, 'players/' + playerId); window.dbOnDisconnect(userRef).update({ status: 'offline', lastActive: Date.now() }).then(() => { window.dbSet(userRef, { name: playerName, pin: playerPin, points: userArenaPoints, status: status, theme: currentTheme, currentSessionId: clientSessionId, lastActive: Date.now() }); }); if (sessionListenerRef) sessionListenerRef(); sessionListenerRef = window.dbOnValue(window.dbRef(window.db, 'players/' + playerId + '/currentSessionId'), (snap) => { const remoteSession = snap.val(); if (remoteSession && remoteSession !== clientSessionId) { showCustomAlert('Session Terminated', '⚠️ تم تسجيل الدخول بهذا الحساب من جهاز آخر!', () => location.reload()); } }); if (!activeChallengeRef) { activeChallengeRef = window.dbOnValue(window.dbRef(window.db, 'challenges/' + playerId), (snapshot) => { const data = snapshot.val(); if (data && data.status === 'pending') { playSound('bell'); showIncomingChallenge(data); } else if (data && data.status === 'cancelled') { challengeModal.style.display = 'none'; showCustomAlert('Challenge Cancelled', 'The challenge was cancelled by the sender.'); window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId)); } }); } }
 
-function escapeAttr(value){
-  return escapeHtml(value);
-}
-//#endregion
+let isRegisterMode = false;
+authSwitchBtn.addEventListener('click', () => { playSound('click'); isRegisterMode = !isRegisterMode; authModalTitle.textContent = isRegisterMode ? 'Create Account' : 'Player Login'; authModalDesc.textContent = isRegisterMode ? 'Choose lowercase username (no spaces) & 4-digit PIN:' : 'Enter your lowercase username (no spaces) and 4-digit PIN:'; authSubmitBtn.textContent = isRegisterMode ? 'Register' : 'Login'; authSwitchBtn.textContent = isRegisterMode ? 'Already have an account? Login' : "Don't have an account? Create one"; });
+authSubmitBtn.addEventListener('click', async () => { playSound('click'); let name = playerNameInput.value.toLowerCase().replace(/\s+/g, ''); let pin = playerPinInput.value.trim(); if (!name || pin.length !== 4 || isNaN(pin)) return showCustomAlert('Error', 'Please enter a valid lowercase name (no spaces) and a 4-digit numeric PIN!'); if (!window.db) return showCustomAlert('Error', 'Database connecting... Please wait.'); const snapshot = await window.dbGet(window.dbRef(window.db, 'players')); if (isRegisterMode) { let exists = false; if (snapshot.exists()) { snapshot.forEach(childSnap => { if (childSnap.val().name === name) exists = true; }); } if (exists) return showCustomAlert('Error', 'Username already taken! Please login or choose another name.'); playerId = 'p_' + Math.random().toString(36).substring(2, 9); playerName = name; playerPin = pin; userArenaPoints = 10; stats = { total: 0, wins: 0, losses: 0 }; } else { let matchedUser = null; let matchedId = null; if (snapshot.exists()) { snapshot.forEach(childSnap => { let u = childSnap.val(); if (u.name === name && u.pin === pin) { matchedUser = u; matchedId = childSnap.key; } }); } if (!matchedUser) return showCustomAlert('Login Failed', 'Invalid username or 4-digit PIN!'); playerId = matchedId; playerName = matchedUser.name; playerPin = matchedUser.pin; userArenaPoints = matchedUser.points || 10; } nameModal.style.display = 'none'; mainMenu.style.display = 'flex'; menuUsername.textContent = playerName; userPoints.textContent = userArenaPoints; registerOnlinePresence(); initGame(); });
+function checkPlayerName() { nameModal.style.display = 'flex'; mainMenu.style.display = 'flex'; }
 
+function fetchGlobalLeaderboard() { if (!window.db) return; window.dbOnValue(window.dbRef(window.db, 'players'), (snapshot) => { const players = snapshot.val(); if (!players || !leaderboardList) return; let sortedPlayers = Object.values(players).sort((a, b) => (b.points || 0) - (a.points || 0)); leaderboardList.innerHTML = ''; sortedPlayers.slice(0, 5).forEach((p, index) => { let row = document.createElement('div'); row.className = 'flex justify-between items-center py-1.5 px-2.5 border-b border-white/10 last:border-none'; row.innerHTML = `<span>#${index + 1} ${p.name}</span> <span class="font-bold text-cyan-400">${p.points || 0} pts</span>`; leaderboardList.appendChild(row); }); }, { onlyOnce: true }); }
+onlineLobbyMenuBtn.addEventListener('click', () => { playSound('click'); onlineLobbyModal.style.display = 'flex'; fetchOnlinePlayers(); }); closeOnlineLobbyBtn.addEventListener('click', () => { playSound('click'); onlineLobbyModal.style.display = 'none'; }); refreshLobbyBtn.addEventListener('click', () => { playSound('click'); fetchOnlinePlayers(); });
+function fetchOnlinePlayers() { if (!window.db) return; window.dbOnValue(window.dbRef(window.db, 'players'), (snapshot) => { const players = snapshot.val(); onlinePlayersList.innerHTML = ''; if (!players) return onlinePlayersList.innerHTML = '<p class="text-xs text-center opacity-50 py-4">No players online.</p>'; let count = 0; Object.keys(players).forEach(id => { if (id === playerId) return; let p = players[id]; let div = document.createElement('div'); div.className = 'bg-black/40 p-3 rounded-2xl border border-white/10 flex justify-between items-center text-xs font-bold'; if (p.status === 'in-game') { div.innerHTML = `<span>🔴 ${p.name}</span> <span class="text-rose-400 text-[10px] px-2.5 py-1 rounded-lg bg-rose-950/40 border border-rose-800/50">In Match 🎮</span>`; } else { count++; div.innerHTML = `<span>🟢 ${p.name}</span> <button class="bg-cyan-600 hover:bg-cyan-500 px-3.5 py-1.5 rounded-xl text-xs text-white shadow cursor-pointer">Challenge</button>`; div.querySelector('button').addEventListener('click', () => sendChallenge(id, p.name)); } onlinePlayersList.appendChild(div); }); if (count === 0 && onlinePlayersList.children.length === 0) onlinePlayersList.innerHTML = '<p class="text-xs text-center opacity-50 py-4">No other available players online.</p>'; }); }
 
-//#region BACKGROUND
-const canvas = $("bgCanvas");
-const ctx = canvas.getContext("2d");
-let particles = [];
+let outgoingTargetId = null;
+function sendChallenge(targetId, targetName) { playSound('bell'); myRole = 'X'; opponentName = targetName; opponentId = targetId; outgoingTargetId = targetId; currentMatchId = playerId < targetId ? playerId + '_' + targetId : targetId + '_' + playerId; const selectedFormat = matchFormatSelect.value; window.dbSet(window.dbRef(window.db, 'matches/' + currentMatchId), { boardStates: Array(9).fill().map(() => Array(9).fill('')), boardWins: Array(9).fill(null), activeBoardIndex: null, currentPlayer: 'X', status: 'waiting', format: selectedFormat, matchScores: { X: 0, O: 0 }, playerNames: { X: playerName, O: targetName } }); window.dbSet(window.dbRef(window.db, 'challenges/' + targetId), { fromId: playerId, fromName: playerName, matchId: currentMatchId, status: 'pending', format: selectedFormat }); onlineLobbyModal.style.display = 'none'; challengeTitle.textContent = `Waiting for ${targetName}...`; challengeText.textContent = `Challenge sent! Waiting for them to accept.`; document.getElementById('challengeActionButtons').style.display = 'none'; cancelChallengeBtn.classList.remove('hidden'); challengeModal.style.display = 'flex'; gameModeBadge.textContent = `Online vs ${targetName}`; if (myChallengeStatusListener) myChallengeStatusListener(); myChallengeStatusListener = window.dbOnValue(window.dbRef(window.db, 'challenges/' + targetId), (snap) => { const data = snap.val(); if (data && data.status === 'declined') { showCustomAlert('Challenge Declined', `${targetName} declined your challenge.`); challengeModal.style.display = 'none'; cancelChallengeBtn.classList.add('hidden'); onlineLobbyModal.style.display = 'flex'; window.dbRemove(window.dbRef(window.db, 'matches/' + currentMatchId)); if (myChallengeStatusListener) { myChallengeStatusListener(); myChallengeStatusListener = null; } } }); listenToMatch(currentMatchId); }
+cancelChallengeBtn.onclick = () => { playSound('click'); if (outgoingTargetId) window.dbUpdate(window.dbRef(window.db, 'challenges/' + outgoingTargetId), { status: 'cancelled' }); challengeModal.style.display = 'none'; cancelChallengeBtn.classList.add('hidden'); if (currentMatchId) window.dbRemove(window.dbRef(window.db, 'matches/' + currentMatchId)); onlineLobbyModal.style.display = 'flex'; };
+let activeChallengeData = null;
+function showIncomingChallenge(data) { activeChallengeData = data; currentMatchId = data.matchId; opponentName = data.fromName; opponentId = data.fromId; let formatLabel = data.format === '3' ? 'Best of 3' : data.format === '5' ? 'Best of 5' : data.format === 'infinity' ? 'Endless' : 'Single Match'; challengeTitle.textContent = `Challenge from ${data.fromName}!`; challengeText.textContent = `${data.fromName} challenged you to a [${formatLabel}].`; document.getElementById('challengeActionButtons').style.display = 'flex'; cancelChallengeBtn.classList.add('hidden'); challengeModal.style.display = 'flex'; }
+acceptChallengeBtn.onclick = () => { playSound('start'); challengeModal.style.display = 'none'; onlineLobbyModal.style.display = 'none'; mainMenu.style.display = 'none'; gameMode = 'online-p2p'; myRole = 'O'; gameModeBadge.textContent = `Online vs ${opponentName}`; registerOnlinePresence('in-game'); window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), { status: 'playing', ['playerNames/O']: playerName }); window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId)); listenToMatch(currentMatchId); };
+rejectChallengeBtn.onclick = () => { playSound('click'); challengeModal.style.display = 'none'; if (activeChallengeData) { window.dbUpdate(window.dbRef(window.db, 'challenges/' + playerId), { status: 'declined' }); setTimeout(() => window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId)), 3000); } };
 
-function resizeCanvas(){
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-
-  particles = Array.from({length:12},()=>({
-    x:Math.random()*canvas.width,
-    y:Math.random()*canvas.height,
-    r:Math.random()*2 + 1,
-    vx:(Math.random()-.5)*.25,
-    vy:(Math.random()-.5)*.25,
-    a:Math.random()*.45 + .15
-  }));
-}
-
-function drawBg(now=0){
-  if(now - bgLast < 33){
-    requestAnimationFrame(drawBg);
-    return;
-  }
-
-  bgLast = now;
-
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  for(const p of particles){
-    p.x += p.vx;
-    p.y += p.vy;
-
-    if(p.x < -10) p.x = canvas.width + 10;
-    if(p.x > canvas.width + 10) p.x = -10;
-
-    if(p.y < -10) p.y = canvas.height + 10;
-    if(p.y > canvas.height + 10) p.y = -10;
-
-    ctx.beginPath();
-    ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-    ctx.fillStyle = `rgba(56,189,248,${p.a})`;
-    ctx.fill();
-  }
-
-  requestAnimationFrame(drawBg);
-}
-//#endregion
-
-
-//#region START
-async function boot(){
-  applyTheme(loadTheme());
-  bindGlobalEvents();
-  resizeCanvas();
-
-  window.addEventListener("resize",resizeCanvas);
-  requestAnimationFrame(drawBg);
-
-  setAuthMode("login");
-
-  const restored = await restoreSession();
-
-  if(!restored){
-    $("authScreen").classList.remove("hidden");
-    $("app").classList.add("hidden");
-  }
+// --- نظام مراقبة الاتصال والتايمر (30 ثانية خروج تلقائي) ---
+function startDisconnectTimer() {
+    if (disconnectTimerInterval) return; 
+    disconnectModal.style.display = 'flex';
+    let timeLeft = 30;
+    disconnectTimerEl.textContent = timeLeft;
+    
+    disconnectTimerInterval = setInterval(() => {
+        timeLeft--;
+        disconnectTimerEl.textContent = timeLeft;
+        if (timeLeft <= 0) {
+            stopDisconnectTimer();
+            showCustomAlert('Match Aborted', 'Opponent did not reconnect in time. You won by default!', () => {
+                leaveRoom();
+            });
+        }
+    }, 1000);
 }
 
-if(window.db){
-  boot();
-}else{
-  window.addEventListener("firebase-ready",boot,{once:true});
+function stopDisconnectTimer() {
+    if (disconnectTimerInterval) {
+        clearInterval(disconnectTimerInterval);
+        disconnectTimerInterval = null;
+    }
+    disconnectModal.style.display = 'none';
 }
-//#endregion
 
-})();
+forceLeaveBtn.addEventListener('click', () => {
+    playSound('click');
+    stopDisconnectTimer();
+    leaveRoom();
+});
+
+function listenToOpponentStatus(oppId) {
+    if (opponentStatusUnsubscribe) opponentStatusUnsubscribe();
+    opponentStatusUnsubscribe = window.dbOnValue(window.dbRef(window.db, 'players/' + oppId + '/status'), (snap) => {
+        let st = snap.val();
+        if (st === 'offline') {
+            connDot.className = 'w-2 h-2 rounded-full bg-rose-500 animate-pulse';
+            connText.textContent = 'Disconnected';
+            if (gameMode === 'online-p2p' && currentMatchId) {
+                startDisconnectTimer();
+            }
+        } else {
+            connDot.className = 'w-2 h-2 rounded-full bg-emerald-500';
+            connText.textContent = 'Online';
+            stopDisconnectTimer();
+        }
+    });
+}
+
+function leaveRoom() {
+    stopDisconnectTimer();
+    if (opponentStatusUnsubscribe) { opponentStatusUnsubscribe(); opponentStatusUnsubscribe = null; }
+    if (currentMatchId && window.db) window.dbRemove(window.dbRef(window.db, 'matches/' + currentMatchId));
+    currentMatchId = null; connectionStatus.classList.add('hidden'); registerOnlinePresence('online'); gameMode = 'pve'; gameModeBadge.textContent = 'Offline Mode'; mainMenu.style.display = 'flex'; initGame();
+}
+
+resetBtn.addEventListener('click', () => { playSound('click'); if (gameMode === 'online-p2p' && currentMatchId) { showCustomAlert('Restart Request', 'Restart request sent! Waiting for opponent...', null); window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), { resetRequest: { from: myRole, response: 'pending' } }); } else { initGame(); } });
+acceptResetBtn.onclick = () => { playSound('start'); resetRequestModal.style.display = 'none'; if (currentMatchId) window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), { boardStates: Array(9).fill().map(() => Array(9).fill('')), boardWins: Array(9).fill(null), activeBoardIndex: null, currentPlayer: 'X', winnerData: null, resetRequest: null }); };
+declineResetBtn.onclick = () => { playSound('click'); resetRequestModal.style.display = 'none'; if (currentMatchId) window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId + '/resetRequest'), { response: 'declined' }); };
+acceptRematchBtn.onclick = () => { playSound('click'); acceptRematchBtn.textContent = '⏳ Waiting for Opponent...'; acceptRematchBtn.disabled = true; if (gameMode === 'online-p2p' && currentMatchId && window.db) window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}/postMatch`), { [myRole]: 'accepted' }); else { victoryModal.style.display = 'none'; initGame(); } };
+declineRematchBtn.onclick = () => { playSound('click'); if (gameMode === 'online-p2p' && currentMatchId && window.db) window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}/postMatch`), { [myRole]: 'declined' }); else { victoryModal.style.display = 'none'; leaveRoom(); } };
+
+let hasDeclinedAlertShown = false;
+function listenToMatch(matchId) {
+    if (activeMatchUnsubscribe) activeMatchUnsubscribe();
+    activeMatchUnsubscribe = window.dbOnValue(window.dbRef(window.db, 'matches/' + matchId), (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            currentFormat = data.format || '1'; targetWins = getTargetWins(currentFormat);
+            scores = data.matchScores || { X: 0, O: 0 }; scoreXEl.textContent = scores.X; scoreOEl.textContent = scores.O;
+            if (data.playerNames) { 
+                opponentName = myRole === 'X' ? (data.playerNames.O || 'Opponent') : (data.playerNames.X || 'Opponent'); 
+                gameModeBadge.textContent = `Online vs ${opponentName}`; 
+            }
+            boardStates = data.boardStates || Array(9).fill().map(() => Array(9).fill(''));
+            boardWins = data.boardWins || Array(9).fill(null);
+            activeBoardIndex = data.activeBoardIndex !== undefined ? data.activeBoardIndex : null; currentPlayer = data.currentPlayer || 'X';
+
+            if (data.resetRequest) { let req = data.resetRequest; if (req.response === 'pending' && req.from !== myRole) { resetRequestModal.style.display = 'flex'; } else if (req.response === 'declined' && req.from === myRole) { showCustomAlert('Request Declined', 'Your opponent declined to restart the current board.'); window.dbUpdate(window.dbRef(window.db, 'matches/' + matchId), { resetRequest: null }); } } else { resetRequestModal.style.display = 'none'; }
+            
+            const isBoardReset = boardWins.every(win => win === null);
+            if (isBoardReset) { victoryModal.style.display = 'none'; acceptRematchBtn.disabled = false; hasDeclinedAlertShown = false; }
+            if (data.winnerData) showEndModal(data.winnerData.winnerRole, data.winnerData.winnerName, data.winnerData.isCupWin);
+
+            if (data.postMatch) {
+                let xVote = data.postMatch.X, oVote = data.postMatch.O;
+                if (xVote === 'accepted' && oVote === 'accepted') {
+                    playSound('start'); let newScores = scores;
+                    if (scores.X >= targetWins || scores.O >= targetWins) newScores = { X: 0, O: 0 };
+                    if (myRole === 'X') window.dbUpdate(window.dbRef(window.db, 'matches/' + matchId), { boardStates: Array(9).fill().map(() => Array(9).fill('')), boardWins: Array(9).fill(null), activeBoardIndex: null, currentPlayer: 'X', winnerData: null, postMatch: null, matchScores: newScores });
+                } else if ((xVote === 'declined' || oVote === 'declined') && !hasDeclinedAlertShown) {
+                    hasDeclinedAlertShown = true; victoryModal.style.display = 'none'; showCustomAlert('Match Ended', 'تم إنهاء المباراة لأن أحد اللاعبين غادر.', () => leaveRoom());
+                }
+            }
+            
+            if (data.status === 'playing') {
+                if (myChallengeStatusListener) { myChallengeStatusListener(); myChallengeStatusListener = null; }
+                mainMenu.style.display = 'none'; onlineLobbyModal.style.display = 'none'; challengeModal.style.display = 'none'; aiDifficultyModal.style.display = 'none'; 
+                gameMode = 'online-p2p'; connectionStatus.classList.remove('hidden'); connectionStatus.style.display = 'flex'; registerOnlinePresence('in-game'); renderBoard(); updateStatus();
+                
+                if (!opponentStatusUnsubscribe && matchId) {
+                    let parts = matchId.split('_');
+                    opponentId = (parts[0] === playerId) ? parts[1] : parts[0];
+                    listenToOpponentStatus(opponentId);
+                }
+            }
+        } else {
+            if (gameMode === 'online-p2p' && !hasDeclinedAlertShown) { hasDeclinedAlertShown = true; showCustomAlert('Room Closed', 'انتهت الجلسة أو قام المنافس بمغادرة الغرفة.', () => leaveRoom()); }
+        }
+    });
+}
+
+pveMenuBtn.addEventListener('click', () => { playSound('click'); aiDifficultyModal.style.display = 'flex'; });
+cancelAiModalBtn.addEventListener('click', () => { playSound('click'); aiDifficultyModal.style.display = 'none'; });
+document.querySelectorAll('.ai-diff-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        playSound('start'); aiDifficulty = e.target.getAttribute('data-level'); gameMode = 'pve'; gameModeBadge.textContent = `vs AI (${aiDifficulty.toUpperCase()})`; currentFormat = matchFormatSelect.value; targetWins = getTargetWins(currentFormat); scores = { X: 0, O: 0 }; aiDifficultyModal.style.display = 'none'; mainMenu.style.display = 'none'; connectionStatus.style.display = 'none'; connectionStatus.classList.add('hidden'); initGame();
+    });
+});
+
+function initGame() { currentPlayer = 'X'; activeBoardIndex = null; boardWins = Array(9).fill(null); boardStates = Array(9).fill().map(() => Array(9).fill('')); victoryModal.style.display = 'none'; scoreXEl.textContent = scores.X; scoreOEl.textContent = scores.O; renderBoard(); updateStatus(); }
+
+function renderBoard() {
+    ultimateBoard.innerHTML = '';
+    for (let b = 0; b < 9; b++) {
+        const localBoardDiv = document.createElement('div'); localBoardDiv.className = 'local-grid local-board-bg p-2 rounded-xl border-2 transition-all relative overflow-hidden';
+        const isBoardActive = (activeBoardIndex === null || activeBoardIndex === b);
+        if (boardWins[b]) { localBoardDiv.className += ' border-opacity-40 opacity-90'; const overlay = document.createElement('div'); overlay.className = 'absolute inset-0 overlay-bg flex items-center justify-center font-black text-5xl z-10'; overlay.textContent = boardWins[b]; localBoardDiv.appendChild(overlay); }
+        else if (isBoardActive) { if (gameMode === 'online-p2p') { if (currentPlayer === myRole) localBoardDiv.className += ' my-turn-local'; else localBoardDiv.className += ' waiting-local opacity-60'; } else localBoardDiv.className += ' active-local-board'; }
+        else { localBoardDiv.className += ' opacity-40'; }
+        for (let c = 0; c < 9; c++) {
+            const cellBtn = document.createElement('button'); cellBtn.className = 'cell-btn aspect-square rounded-md font-bold text-lg md:text-xl flex items-center justify-center transition-all cursor-pointer'; cellBtn.textContent = boardStates[b] && boardStates[b][c] ? boardStates[b][c] : '';
+            if ((boardStates[b] && boardStates[b][c] !== '') || !isBoardActive || boardWins[b]) { cellBtn.disabled = true; } else { cellBtn.addEventListener('click', () => { triggerMove(b, c); }); }
+            localBoardDiv.appendChild(cellBtn);
+        }
+        ultimateBoard.appendChild(localBoardDiv);
+    }
+}
+
+function triggerMove(b, c) { playSound('click'); handleCellClick(b, c); }
+
+function handleCellClick(bIndex, cIndex) {
+    if (gameMode === 'online-p2p' && currentPlayer !== myRole) return;
+    if (!boardStates[bIndex] || boardStates[bIndex][cIndex] !== '' || boardWins[bIndex] !== null) return;
+    boardStates[bIndex][cIndex] = currentPlayer;
+    if (checkSmallWin(boardStates[bIndex])) { boardWins[bIndex] = currentPlayer; } else if (boardStates[bIndex].every(cell => cell !== '')) { boardWins[bIndex] = 'DRAW'; }
+    if (checkUltimateWin()) { return handleMatchEnd(currentPlayer); }
+    const isGlobalDraw = boardWins.every(win => win !== null);
+    if (isGlobalDraw) { return handleMatchEnd('DRAW'); }
+    activeBoardIndex = (boardWins[cIndex] !== null) ? null : cIndex; currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+    if (gameMode === 'online-p2p' && currentMatchId) { window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), { boardStates: boardStates, boardWins: boardWins, activeBoardIndex: activeBoardIndex, currentPlayer: currentPlayer }); }
+    renderBoard(); updateStatus();
+    if (gameMode === 'pve' && currentPlayer === 'O') { setTimeout(makeAiMove, 600); }
+}
+
+// --- ذكاء اصطناعي احترافي وفائق الذكاء (Grandmaster AI) ---
+function getAiWinBlockMove(b, empty, player) {
+    for (let i of empty) { boardStates[b][i] = player; let wins = checkSmallWin(boardStates[b]); boardStates[b][i] = ''; if (wins) return i; }
+    return null;
+}
+
+function evaluateCellForImpossibleAI(b, c) {
+    let score = 0;
+    if (c === 4) score += 4;
+    else if ([0,2,6,8].includes(c)) score += 2;
+    if (boardWins[c] !== null) score -= 30; // تجنب إعطاء المنافس لعب حر
+    else {
+        let nextEmpty = []; for (let i=0; i<9; i++) if (boardStates[c][i] === '') nextEmpty.push(i);
+        let oppCanWin = getAiWinBlockMove(c, nextEmpty, 'X');
+        if (oppCanWin !== null) score -= 15;
+    }
+    return score;
+}
+
+function makeAiMove() {
+    let targetBoards = [];
+    if (activeBoardIndex === null || boardWins[activeBoardIndex] !== null) { for (let i = 0; i < 9; i++) if (boardWins[i] === null) targetBoards.push(i); } else { targetBoards.push(activeBoardIndex); }
+    if (targetBoards.length === 0) return;
+    
+    let bestMoves = []; let maxScore = -Infinity;
+
+    for (let b of targetBoards) {
+        let empty = []; for (let c = 0; c < 9; c++) if (boardStates[b][c] === '') empty.push(c);
+        if (empty.length > 0) {
+            if (aiDifficulty === 'easy') {
+                bestMoves.push({b: b, c: empty[Math.floor(Math.random() * empty.length)]});
+            } else if (aiDifficulty === 'medium') {
+                let win = getAiWinBlockMove(b, empty, 'O'); let block = getAiWinBlockMove(b, empty, 'X');
+                if (win !== null) bestMoves.push({b: b, c: win});
+                else if (block !== null) bestMoves.push({b: b, c: block});
+                else bestMoves.push({b: b, c: empty[Math.floor(Math.random() * empty.length)]});
+            } else {
+                let win = getAiWinBlockMove(b, empty, 'O'); let block = getAiWinBlockMove(b, empty, 'X');
+                if (win !== null) { triggerMove(b, win); return; }
+                if (block !== null) {
+                    let score = 60 + evaluateCellForImpossibleAI(b, block);
+                    if (score > maxScore) { maxScore = score; bestMoves = [{b: b, c: block}]; }
+                    else if (score === maxScore) { bestMoves.push({b: b, c: block}); }
+                    continue;
+                }
+                for (let c of empty) {
+                    let score = evaluateCellForImpossibleAI(b, c);
+                    if (score > maxScore) { maxScore = score; bestMoves = [{b: b, c: c}]; }
+                    else if (score === maxScore) { bestMoves.push({b: b, c: c}); }
+                }
+            }
+        }
+    }
+    if (bestMoves.length > 0) {
+        let move = bestMoves[Math.floor(Math.random() * bestMoves.length)];
+        triggerMove(move.b, move.c);
+    }
+}
+
+function checkSmallWin(cells) { if (!cells) return false; const wins = [[0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6]]; return wins.some(([x,y,z]) => cells[x] && cells[x] === cells[y] && cells[x] === cells[z]); }
+function checkUltimateWin() { const wins = [[0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6]]; return wins.some(([x,y,z]) => boardWins[x] && boardWins[x] !== 'DRAW' && boardWins[x] === boardWins[y] && boardWins[x] === boardWins[z]); }
+
+function handleMatchEnd(winnerRole) {
+    const isMe = (gameMode === 'online-p2p') ? (winnerRole === myRole) : (winnerRole === 'X');
+    if (winnerRole === 'DRAW' || isMe) { playSound('win'); } else { playSound('lose'); }
+    stats.total++; let winnerName = 'No One'; let isCupWin = false;
+    if (winnerRole === 'DRAW') { userArenaPoints += 1; } else { scores[winnerRole]++; winnerName = (gameMode === 'online-p2p') ? (winnerRole === myRole ? playerName : opponentName) : `Player ${winnerRole}`; const isWin = (gameMode === 'online-p2p') ? (winnerRole === myRole) : (winnerRole === 'X'); if (isWin) { stats.wins++; userArenaPoints += 3; } else { stats.losses++; userArenaPoints = Math.max(0, userArenaPoints - 1); } isCupWin = scores[winnerRole] >= targetWins; }
+    scoreXEl.textContent = scores.X; scoreOEl.textContent = scores.O;
+    if (window.db) window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { points: userArenaPoints });
+    if (gameMode === 'online-p2p' && currentMatchId && window.db) { window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), { matchScores: scores, winnerData: { winnerRole, winnerName, isCupWin }, postMatch: { X: 'pending', O: 'pending' } }); } else { showEndModal(winnerRole, winnerName, isCupWin); }
+}
+
+function showEndModal(winnerRole, winnerName, isCupWin) {
+    if (winnerRole === 'DRAW') { victoryTitle.textContent = `🤝 IT'S A DRAW! 🤝`; victoryText.textContent = `Both played well! (+1 pt)`; acceptRematchBtn.innerHTML = (targetWins > 1 && currentFormat !== 'infinity') ? '▶️ Ready for Next Round' : '🤝 Play Again'; } else {
+        const isMe = (gameMode === 'online-p2p') ? (winnerRole === myRole) : (winnerRole === 'X');
+        if (isCupWin) { victoryTitle.textContent = isMe ? `🏆 YOU WON THE CUP! 🏆` : `💔 ${winnerName} WON THE CUP! 💔`; victoryText.textContent = `Target: ${targetWins} Wins Reached!`; acceptRematchBtn.innerHTML = '🏆 Start New Cup'; declineRematchBtn.innerHTML = '🚪 Exit to Menu'; } else { victoryTitle.textContent = isMe ? `🎉 ROUND WON! 🎉` : `😢 ROUND LOST!`; victoryText.textContent = `Score: ${scores.X} - ${scores.O} | First to ${targetWins} wins!`; acceptRematchBtn.innerHTML = '▶️ Ready for Next Round'; declineRematchBtn.innerHTML = '🏳️ Forfeit & Exit'; }
+    }
+    victoryModal.style.display = 'flex';
+}
+
+function updateStatus() { turnIndicator.textContent = currentPlayer; }
+function startApp() { setupPresence(); checkPlayerName(); }
+if (window.db) { startApp(); } else { window.addEventListener('firebase-ready', startApp); }

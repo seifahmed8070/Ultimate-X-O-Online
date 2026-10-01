@@ -1,7 +1,7 @@
 /* --- تعريف ثيمات اللعبة والـ Variables --- */
 .theme-cyberpunk {
     --bg-color: #030712;
-    --card-bg: rgba(15, 23, 42, 0.85);
+    --card-bg: rgba(15, 23, 42, 0.9);
     --primary: #06b6d4;
     --secondary: #14b8a6;
     --accent: #10b981;
@@ -11,7 +11,7 @@
 
 .theme-matrix {
     --bg-color: #022c22;
-    --card-bg: rgba(2, 44, 34, 0.9);
+    --card-bg: rgba(2, 44, 34, 0.92);
     --primary: #22c55e;
     --secondary: #10b981;
     --accent: #84cc16;
@@ -21,7 +21,7 @@
 
 .theme-obsidian {
     --bg-color: #09090b;
-    --card-bg: rgba(24, 24, 27, 0.9);
+    --card-bg: rgba(24, 24, 27, 0.92);
     --primary: #f43f5e;
     --secondary: #fb7185;
     --accent: #e11d48;
@@ -31,7 +31,7 @@
 
 .theme-vaporwave {
     --bg-color: #2e1065;
-    --card-bg: rgba(46, 16, 101, 0.85);
+    --card-bg: rgba(46, 16, 101, 0.9);
     --primary: #ec4899;
     --secondary: #d946ef;
     --accent: #8b5cf6;
@@ -64,7 +64,7 @@ body.app-shell {
 .modal-box {
     background-color: var(--card-bg);
     border-color: var(--border-color);
-    backdrop-filter: blur(16px);
+    backdrop-filter: blur(20px);
 }
 
 .brand-title {
@@ -72,7 +72,7 @@ body.app-shell {
 }
 
 .sub-box {
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(0, 0, 0, 0.45);
     border-color: var(--border-color);
 }
 
@@ -88,20 +88,20 @@ body.app-shell {
 }
 
 .input-field {
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.6);
     border: 1px solid var(--border-color);
     color: var(--text-color);
 }
 
 .cell-btn {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     color: var(--text-color);
     transition: all 0.15s ease;
 }
 
 .cell-btn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.15);
     border-color: var(--primary);
 }
 
@@ -117,17 +117,17 @@ body.app-shell {
 
 .my-turn-local {
     border-color: var(--accent);
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.35);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
 }
 
 .waiting-local {
-    border-color: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.1);
 }
 
 .overlay-bg {
-    background: rgba(0, 0, 0, 0.85);
+    background: rgba(0, 0, 0, 0.9);
     color: var(--primary);
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(6px);
 }
 
 .header-bar, .control-panel, .main-board-wrapper, .theme-select {

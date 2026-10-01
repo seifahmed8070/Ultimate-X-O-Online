@@ -105,6 +105,7 @@ const statPoints = document.getElementById('statPoints');
 const statTotal = document.getElementById('statTotal');
 const profileNameDisplay = document.getElementById('profileNameDisplay');
 const deleteAccountBtn = document.getElementById('deleteAccountBtn');
+const logoutBtn = document.getElementById('logoutBtn');
 
 const leaveRoomBtn = document.getElementById('leaveRoomBtn');
 const matchFormatSelect = document.getElementById('matchFormatSelect');
@@ -112,13 +113,13 @@ const matchFormatSelect = document.getElementById('matchFormatSelect');
 // مودال مخصص داخل الموقع
 let customModal = document.createElement('div');
 customModal.id = 'customModal';
-customModal.className = 'fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4 backdrop-blur-xl';
+customModal.className = 'fixed inset-0 bg-black/85 z-50 hidden items-center justify-center p-4 backdrop-blur-xl';
 customModal.innerHTML = `
-    <div class="modal-box border border-cyan-500/40 bg-slate-950/90 p-6 rounded-3xl max-w-sm w-full text-center shadow-[0_0_40px_rgba(6,182,212,0.2)] flex flex-col gap-4">
-        <h2 id="customModalTitle" class="font-black text-lg text-cyan-400">Notice</h2>
-        <p id="customModalText" class="text-xs text-slate-300 leading-relaxed"></p>
-        <div id="customModalButtons" class="flex gap-2">
-            <button id="customModalOkBtn" class="w-full py-2.5 rounded-xl font-bold text-xs bg-cyan-600 text-white">OK</button>
+    <div class="modal-box border border-cyan-500/40 bg-slate-950/95 p-8 rounded-3xl max-w-sm w-full text-center shadow-[0_0_50px_rgba(6,182,212,0.25)] flex flex-col gap-4">
+        <h2 id="customModalTitle" class="font-black text-xl text-cyan-400">Notice</h2>
+        <p id="customModalText" class="text-sm text-slate-300 leading-relaxed"></p>
+        <div id="customModalButtons" class="flex gap-2 mt-2">
+            <button id="customModalOkBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white">OK</button>
         </div>
     </div>
 `;
@@ -129,7 +130,7 @@ function showCustomAlert(title, text, onClose = null) {
     document.getElementById('customModalTitle').textContent = title;
     document.getElementById('customModalText').textContent = text;
     let btnContainer = document.getElementById('customModalButtons');
-    btnContainer.innerHTML = `<button id="customModalOkBtn" class="w-full py-2.5 rounded-xl font-bold text-xs bg-cyan-600 text-white">OK</button>`;
+    btnContainer.innerHTML = `<button id="customModalOkBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white">OK</button>`;
     customModal.style.display = 'flex';
     document.getElementById('customModalOkBtn').onclick = () => {
         customModal.style.display = 'none';
@@ -143,8 +144,8 @@ function showCustomConfirm(title, text, onConfirm, onCancel = null) {
     document.getElementById('customModalText').textContent = text;
     let btnContainer = document.getElementById('customModalButtons');
     btnContainer.innerHTML = `
-        <button id="customModalConfirmBtn" class="w-full py-2.5 rounded-xl font-bold text-xs bg-cyan-600 text-white">Yes, Confirm</button>
-        <button id="customModalCancelBtn" class="w-full bg-rose-600 text-white font-bold py-2.5 rounded-xl text-xs">Cancel</button>
+        <button id="customModalConfirmBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white">Yes, Confirm</button>
+        <button id="customModalCancelBtn" class="w-full bg-rose-600 text-white font-bold py-3 rounded-xl text-sm">Cancel</button>
     `;
     customModal.style.display = 'flex';
     document.getElementById('customModalConfirmBtn').onclick = () => {
@@ -159,6 +160,22 @@ function showCustomConfirm(title, text, onConfirm, onCancel = null) {
 
 menuRulesBtn.addEventListener('click', () => { playSound('click'); rulesModal.style.display = 'flex'; });
 closeRulesBtn.addEventListener('click', () => { playSound('click'); rulesModal.style.display = 'none'; });
+
+// زر تسجيل الخروج (يحذف السيشن ويجبر المستخدم على تسجيل الدخول مجدداً)
+logoutBtn.addEventListener('click', () => {
+    playSound('click');
+    showCustomConfirm('Logout', 'Are you sure you want to sign out?', async () => {
+        if (window.db && playerId) {
+            try {
+                await window.dbRemove(window.dbRef(window.db, 'players/' + playerId));
+            } catch (e) {
+                console.log(e);
+            }
+        }
+        localStorage.clear();
+        location.reload();
+    });
+});
 
 deleteAccountBtn.addEventListener('click', () => {
     playSound('click');
@@ -182,7 +199,7 @@ if (!leaderboardList && statsModal) {
     lbContainer.className = 'mt-4 text-left';
     lbContainer.innerHTML = `
         <h3 class="font-bold text-xs mb-2 text-cyan-400 uppercase tracking-wider">🏆 Global Arena Leaderboard</h3>
-        <div id="leaderboardList" class="flex flex-col gap-1.5 max-h-36 overflow-y-auto bg-black/50 p-2 rounded-xl border border-white/10 text-xs">
+        <div id="leaderboardList" class="flex flex-col gap-1.5 max-h-36 overflow-y-auto bg-black/50 p-2.5 rounded-xl border border-white/10 text-xs">
             <p class="text-center text-slate-500 py-2">Loading leaderboard...</p>
         </div>
     `;
@@ -201,22 +218,24 @@ let activeBoardIndex = null;
 let boardWins = Array(9).fill(null); 
 let boardStates = Array(9).fill().map(() => Array(9).fill(''));
 
-let playerName = localStorage.getItem('ultimate_player_name') || '';
-let playerPin = localStorage.getItem('ultimate_player_pin') || '';
-let playerId = localStorage.getItem('ultimate_player_id') || 'p_' + Math.random().toString(36).substring(2, 9);
-localStorage.setItem('ultimate_player_id', playerId);
+// منع الاحتفاظ ببيانات الدخول عند التحديث (لا يتم تخزين الـ credentials في الـ localStorage)
+let playerName = '';
+let playerPin = '';
+let playerId = null;
+let clientSessionId = 's_' + Math.random().toString(36).substring(2, 9);
 
-let userArenaPoints = parseInt(localStorage.getItem('ultimate_points')) || 10;
-let stats = JSON.parse(localStorage.getItem('ultimate_stats')) || { total: 0, wins: 0, losses: 0 };
+let userArenaPoints = 10;
+let stats = { total: 0, wins: 0, losses: 0 };
 let scores = { X: 0, O: 0 };
 let currentTheme = localStorage.getItem('ultimate_theme') || 'theme-cyberpunk';
 
-let currentMatchId = localStorage.getItem('ultimate_match_id') || null;
-let myRole = localStorage.getItem('ultimate_my_role') || 'X';
+let currentMatchId = null;
+let myRole = 'X';
 let opponentName = 'Opponent';
 let activeMatchUnsubscribe = null;
 let activeChallengeRef = null;
 let myChallengeStatusListener = null;
+let sessionListenerRef = null;
 
 let currentFormat = '1';
 let targetWins = 1;
@@ -260,14 +279,14 @@ function setupPresence() {
     if (!window.db) return;
     const connectedRef = window.dbRef(window.db, ".info/connected");
     window.dbOnValue(connectedRef, (snap) => {
-        if (snap.val() === true && playerName) {
+        if (snap.val() === true && playerName && playerId) {
             registerOnlinePresence(gameMode === 'online-p2p' ? 'in-game' : 'online');
         }
     });
 }
 
 function registerOnlinePresence(status = 'online') {
-    if (!window.db || !playerName) return;
+    if (!window.db || !playerName || !playerId) return;
     const userRef = window.dbRef(window.db, 'players/' + playerId);
     
     window.dbOnDisconnect(userRef).remove().then(() => {
@@ -277,8 +296,20 @@ function registerOnlinePresence(status = 'online') {
             points: userArenaPoints, 
             status: status,
             theme: currentTheme,
+            currentSessionId: clientSessionId,
             lastActive: Date.now() 
         });
+    });
+
+    // مراقبة الدخول من جهاز آخر (Single Device Enforcement)
+    if (sessionListenerRef) sessionListenerRef();
+    sessionListenerRef = window.dbOnValue(window.dbRef(window.db, 'players/' + playerId + '/currentSessionId'), (snap) => {
+        const remoteSession = snap.val();
+        if (remoteSession && remoteSession !== clientSessionId) {
+            showCustomAlert('Session Terminated', '⚠️ تم تسجيل الدخول بهذا الحساب من جهاز آخر!', () => {
+                location.reload();
+            });
+        }
     });
 
     if (!activeChallengeRef) {
@@ -335,7 +366,6 @@ authSubmitBtn.addEventListener('click', async () => {
     const snapshot = await window.dbGet(playersRef);
 
     if (isRegisterMode) {
-        // فحص لو الاسم موجود مسبقاً
         let exists = false;
         if (snapshot.exists()) {
             snapshot.forEach(childSnap => {
@@ -350,18 +380,11 @@ authSubmitBtn.addEventListener('click', async () => {
             return;
         }
 
-        // إنشاء حساب جديد
         playerId = 'p_' + Math.random().toString(36).substring(2, 9);
         playerName = name;
         playerPin = pin;
         userArenaPoints = 10;
         stats = { total: 0, wins: 0, losses: 0 };
-
-        localStorage.setItem('ultimate_player_id', playerId);
-        localStorage.setItem('ultimate_player_name', playerName);
-        localStorage.setItem('ultimate_player_pin', playerPin);
-        localStorage.setItem('ultimate_points', userArenaPoints);
-        localStorage.setItem('ultimate_stats', JSON.stringify(stats));
 
         nameModal.style.display = 'none';
         mainMenu.style.display = 'flex';
@@ -370,7 +393,6 @@ authSubmitBtn.addEventListener('click', async () => {
         registerOnlinePresence();
         initGame();
     } else {
-        // تسجيل الدخول
         let matchedUser = null;
         let matchedId = null;
 
@@ -389,72 +411,25 @@ authSubmitBtn.addEventListener('click', async () => {
             return;
         }
 
-        // نجاح تسجيل الدخول
         playerId = matchedId;
         playerName = matchedUser.name;
         playerPin = matchedUser.pin;
         userArenaPoints = matchedUser.points || 10;
 
-        localStorage.setItem('ultimate_player_id', playerId);
-        localStorage.setItem('ultimate_player_name', playerName);
-        localStorage.setItem('ultimate_player_pin', playerPin);
-        localStorage.setItem('ultimate_points', userArenaPoints);
-
         nameModal.style.display = 'none';
         menuUsername.textContent = playerName;
         userPoints.textContent = userArenaPoints;
         registerOnlinePresence();
 
-        if (currentMatchId) {
-            gameMode = 'online-p2p';
-            mainMenu.style.display = 'none';
-            leaveRoomBtn.classList.remove('hidden');
-            listenToMatch(currentMatchId);
-        } else {
-            mainMenu.style.display = 'flex';
-            initGame();
-        }
+        mainMenu.style.display = 'flex';
+        initGame();
     }
 });
 
 function checkPlayerName() {
-    if (!playerName || !playerPin) {
-        nameModal.style.display = 'flex';
-        mainMenu.style.display = 'flex';
-    } else {
-        nameModal.style.display = 'none';
-        menuUsername.textContent = playerName;
-        userPoints.textContent = userArenaPoints;
-        registerOnlinePresence();
-
-        if (currentMatchId && window.db) {
-            const matchCheckRef = window.dbRef(window.db, 'matches/' + currentMatchId);
-            window.dbOnValue(matchCheckRef, (snapshot) => {
-                const matchData = snapshot.val();
-                if (matchData) {
-                    gameMode = 'online-p2p';
-                    mainMenu.style.display = 'none';
-                    onlineLobbyModal.style.display = 'none';
-                    challengeModal.style.display = 'none';
-                    aiDifficultyModal.style.display = 'none';
-                    leaveRoomBtn.classList.remove('hidden');
-                    listenToMatch(currentMatchId);
-                } else {
-                    localStorage.removeItem('ultimate_match_id');
-                    localStorage.removeItem('ultimate_my_role');
-                    currentMatchId = null;
-                    leaveRoomBtn.classList.add('hidden');
-                    gameMode = 'pve';
-                    gameModeBadge.textContent = 'Offline Mode';
-                    mainMenu.style.display = 'flex';
-                    initGame();
-                }
-            }, { onlyOnce: true });
-        } else {
-            mainMenu.style.display = 'flex';
-            initGame();
-        }
-    }
+    // دائماً نبدأ بإظهار شاشة تسجيل الدخول عند فتح الصفحة أو عمل Refresh (عدم الاحتفاظ بالسيشن)
+    nameModal.style.display = 'flex';
+    mainMenu.style.display = 'flex';
 }
 
 function fetchGlobalLeaderboard() {
@@ -469,7 +444,7 @@ function fetchGlobalLeaderboard() {
         
         sortedPlayers.slice(0, 5).forEach((p, index) => {
             let row = document.createElement('div');
-            row.className = 'flex justify-between items-center py-1 px-2 border-b border-white/10 last:border-none';
+            row.className = 'flex justify-between items-center py-1.5 px-2.5 border-b border-white/10 last:border-none';
             row.innerHTML = `<span>#${index + 1} ${p.name}</span> <span class="font-bold text-cyan-400">${p.points || 0} pts</span>`;
             leaderboardList.appendChild(row);
         });
@@ -509,13 +484,13 @@ function fetchOnlinePlayers() {
             let p = players[id];
             
             let div = document.createElement('div');
-            div.className = 'bg-black/40 p-2.5 rounded-xl border border-white/10 flex justify-between items-center text-xs font-bold';
+            div.className = 'bg-black/40 p-3 rounded-2xl border border-white/10 flex justify-between items-center text-xs font-bold';
             
             if (p.status === 'in-game') {
-                div.innerHTML = `<span>🔴 ${p.name}</span> <span class="text-rose-400 text-[10px] px-2 py-1 rounded bg-rose-950/40 border border-rose-800/50">In Match 🎮</span>`;
+                div.innerHTML = `<span>🔴 ${p.name}</span> <span class="text-rose-400 text-[10px] px-2.5 py-1 rounded-lg bg-rose-950/40 border border-rose-800/50">In Match 🎮</span>`;
             } else {
                 count++;
-                div.innerHTML = `<span>🟢 ${p.name}</span> <button class="bg-cyan-600 px-3 py-1 rounded-lg text-xs text-white">Challenge</button>`;
+                div.innerHTML = `<span>🟢 ${p.name}</span> <button class="bg-cyan-600 hover:bg-cyan-500 px-3.5 py-1.5 rounded-xl text-xs text-white shadow">Challenge</button>`;
                 div.querySelector('button').addEventListener('click', () => sendChallenge(id, p.name));
             }
             onlinePlayersList.appendChild(div);
@@ -535,9 +510,6 @@ function sendChallenge(targetId, targetName) {
     opponentName = targetName;
     outgoingTargetId = targetId;
     currentMatchId = playerId < targetId ? playerId + '_' + targetId : targetId + '_' + playerId;
-    
-    localStorage.setItem('ultimate_match_id', currentMatchId);
-    localStorage.setItem('ultimate_my_role', myRole);
 
     const selectedFormat = matchFormatSelect.value;
     const initialBoardStates = Array(9).fill().map(() => Array(9).fill(''));
@@ -632,8 +604,6 @@ acceptChallengeBtn.onclick = () => {
     
     gameMode = 'online-p2p';
     myRole = 'O';
-    localStorage.setItem('ultimate_match_id', currentMatchId);
-    localStorage.setItem('ultimate_my_role', myRole);
     gameModeBadge.textContent = `Online vs ${opponentName}`;
     
     registerOnlinePresence('in-game');
@@ -669,8 +639,6 @@ function leaveRoom() {
     if (currentMatchId && window.db) {
         window.dbRemove(window.dbRef(window.db, 'matches/' + currentMatchId));
     }
-    localStorage.removeItem('ultimate_match_id');
-    localStorage.removeItem('ultimate_my_role');
     currentMatchId = null;
     leaveRoomBtn.classList.add('hidden');
     registerOnlinePresence('online');
@@ -680,7 +648,7 @@ function leaveRoom() {
     initGame();
 }
 
-// نظام التصويت الثنائي للـ Rematch
+// --- نظام التصويت الثنائي الفعال للـ Rematch ---
 acceptRematchBtn.onclick = () => {
     playSound('click');
     acceptRematchBtn.textContent = '⏳ Waiting for Opponent...';
@@ -728,6 +696,8 @@ function sanitizeBoardWins(data) {
     return clean;
 }
 
+let hasDeclinedAlertShown = false;
+
 function listenToMatch(matchId) {
     if (activeMatchUnsubscribe) {
         activeMatchUnsubscribe();
@@ -758,6 +728,7 @@ function listenToMatch(matchId) {
                 victoryModal.style.display = 'none';
                 acceptRematchBtn.textContent = '🤝 Play Again (Accept)';
                 acceptRematchBtn.disabled = false;
+                hasDeclinedAlertShown = false;
             }
 
             if (data.winnerData) {
@@ -785,8 +756,10 @@ function listenToMatch(matchId) {
                             matchScores: newScores
                         });
                     }
-                } else if (xVote === 'declined' || oVote === 'declined') {
-                    showCustomAlert('Match Ended', 'Opponent declined the rematch. Returning to menu...', () => {
+                } else if ((xVote === 'declined' || oVote === 'declined') && !hasDeclinedAlertShown) {
+                    hasDeclinedAlertShown = true;
+                    victoryModal.style.display = 'none';
+                    showCustomAlert('Match Ended', 'تم إنهاء المباراة لأن أحد اللاعبين رفض إعادة اللعب.', () => {
                         leaveRoom();
                     });
                 }
@@ -808,9 +781,13 @@ function listenToMatch(matchId) {
                 updateStatus();
             }
         } else {
-            showCustomAlert('Room Closed', 'The match room was closed by the opponent.', () => {
-                leaveRoom();
-            });
+            // منع ظهور التنبيهات المكررة عند غلق الروم
+            if (gameMode === 'online-p2p' && !hasDeclinedAlertShown) {
+                hasDeclinedAlertShown = true;
+                showCustomAlert('Room Closed', 'انتهت الجلسة أو قام المنافس بمغادرة الغرفة.', () => {
+                    leaveRoom();
+                });
+            }
         }
     });
 }
@@ -1020,9 +997,6 @@ function handleMatchEnd(winnerRole) {
     scoreXEl.textContent = scores.X;
     scoreOEl.textContent = scores.O;
     
-    localStorage.setItem('ultimate_points', userArenaPoints);
-    localStorage.setItem('ultimate_stats', JSON.stringify(stats));
-    
     if (window.db) {
         window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { points: userArenaPoints });
     }
@@ -1062,7 +1036,7 @@ function updateStatus() {
     turnIndicator.textContent = currentPlayer;
 }
 
-resetBtn.addEventListener('click', () => { playSound('click'); requestRestart(); });
+resetBtn.addEventListener('click', () => { playSound('click'); });
 
 function startApp() {
     setupPresence();

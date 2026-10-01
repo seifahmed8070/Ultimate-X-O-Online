@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="style.css">
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-      import { getDatabase, ref, set, onValue, update, remove, onDisconnect } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+      import { getDatabase, ref, set, onValue, update, remove, onDisconnect, get, child } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
       
       const firebaseConfig = {
         apiKey: "AIzaSyAQLsvV-6roMQOlGkgXPfyC182O4MN6Xgc",
@@ -29,21 +29,26 @@
       window.dbUpdate = update;
       window.dbRemove = remove;
       window.dbOnDisconnect = onDisconnect;
+      window.dbGet = get;
+      window.dbChild = child;
       window.dispatchEvent(new Event('firebase-ready'));
     </script>
 </head>
 <body class="app-shell min-h-screen flex flex-col items-center p-2 selection:bg-cyan-500 selection:text-white">
 
-    <!-- نافذة تسجيل الدخول بالاسم وكلمة السر (4 أرقام) -->
+    <!-- نافذة تسجيل الدخول / إنشاء حساب -->
     <div id="nameModal" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-xl">
         <div class="modal-box border border-cyan-500/40 bg-slate-950/90 p-7 rounded-3xl max-w-sm w-full text-center shadow-[0_0_40px_rgba(6,182,212,0.2)]">
-            <h2 class="modal-title font-black text-2xl mb-2 tracking-wider bg-gradient-to-r from-cyan-400 to-teal-300 bg-clip-text text-transparent">Player Login</h2>
-            <p class="text-xs mb-5 text-slate-400">Enter your name and 4-digit PIN to access the arena:</p>
+            <h2 id="authModalTitle" class="modal-title font-black text-2xl mb-2 tracking-wider bg-gradient-to-r from-cyan-400 to-teal-300 bg-clip-text text-transparent">Player Login</h2>
+            <p id="authModalDesc" class="text-xs mb-5 text-slate-400">Enter your lowercase username (no spaces) and 4-digit PIN:</p>
             <form id="nameForm" action="#" method="post" onsubmit="return false;" class="flex flex-col gap-3">
-                <input type="text" id="playerNameInput" autocomplete="off" placeholder="Your Name (e.g. Saif)" class="w-full bg-slate-900 border border-cyan-500/30 px-4 py-3 rounded-2xl text-center text-white focus:outline-none focus:border-cyan-400 font-bold text-sm shadow-inner">
+                <input type="text" id="playerNameInput" autocomplete="off" placeholder="username (lowercase, no spaces)" class="w-full bg-slate-900 border border-cyan-500/30 px-4 py-3 rounded-2xl text-center text-white focus:outline-none focus:border-cyan-400 font-bold text-sm shadow-inner lowercase">
                 <input type="password" id="playerPinInput" autocomplete="off" maxlength="4" pattern="[0-9]*" inputmode="numeric" placeholder="4-Digit PIN (e.g. 1234)" class="w-full bg-slate-900 border border-cyan-500/30 px-4 py-3 rounded-2xl text-center text-white focus:outline-none focus:border-cyan-400 font-bold text-sm tracking-widest shadow-inner">
-                <button type="button" id="saveNameBtn" class="w-full py-3.5 rounded-2xl font-black text-sm uppercase tracking-wider text-white bg-gradient-to-r from-cyan-600 to-teal-600 shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:shadow-[0_0_25px_rgba(6,182,212,0.7)] transition-all border border-cyan-400/50 mt-1">
-                    Enter Arena
+                <button type="button" id="authSubmitBtn" class="w-full py-3.5 rounded-2xl font-black text-sm uppercase tracking-wider text-white bg-gradient-to-r from-cyan-600 to-teal-600 shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:shadow-[0_0_25px_rgba(6,182,212,0.7)] transition-all border border-cyan-400/50 mt-1">
+                    Login
+                </button>
+                <button type="button" id="authSwitchBtn" class="text-xs text-cyan-400 hover:underline mt-2 font-bold cursor-pointer">
+                    Don't have an account? Create one
                 </button>
             </form>
         </div>
@@ -105,10 +110,9 @@
         </div>
     </div>
 
-    <!-- شاشة القائمة الرئيسية (التصميم الدمج الفخم: ركن التحدي السريع + ستايل النيون والزجاج) -->
+    <!-- شاشة القائمة الرئيسية -->
     <div id="mainMenu" class="fixed inset-0 bg-black/80 z-40 flex items-center justify-center p-4 backdrop-blur-xl">
         <div class="modal-box border border-cyan-500/40 bg-slate-950/85 p-7 rounded-3xl max-w-sm w-full text-center shadow-[0_0_40px_rgba(6,182,212,0.2)] flex flex-col gap-4 relative overflow-hidden">
-            <!-- نيون تجميلي خلفي -->
             <div class="absolute -top-12 -right-12 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none"></div>
             <div class="absolute -bottom-12 -left-12 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
 
@@ -229,9 +233,14 @@
             <div id="victoryIcon" class="text-4xl mb-2">🎉</div>
             <h2 id="victoryTitle" class="font-black text-xl mb-2 tracking-wider text-emerald-400">VICTORY!</h2>
             <p id="victoryText" class="text-sm mb-6 font-semibold text-slate-300">Player wins!</p>
-            <button id="nextRoundBtn" class="w-full py-3 rounded-2xl font-black text-sm uppercase tracking-wide bg-gradient-to-r from-cyan-600 to-teal-600 text-white shadow-lg transition-all border border-cyan-400/50">
-                Play Again
-            </button>
+            <div id="victoryButtonContainer">
+                <button id="acceptRematchBtn" class="w-full py-3 rounded-2xl font-black text-xs uppercase tracking-wider text-white bg-gradient-to-r from-emerald-600 to-teal-600 shadow-lg transition-all mb-2">
+                    🤝 Play Again (Accept)
+                </button>
+                <button id="declineRematchBtn" class="w-full py-2.5 rounded-2xl font-bold text-xs uppercase tracking-wider text-white bg-rose-600 hover:bg-rose-500 shadow-lg transition-all">
+                    🚪 Decline & Exit to Menu
+                </button>
+            </div>
         </div>
     </div>
 

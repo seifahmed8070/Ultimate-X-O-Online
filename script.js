@@ -63,25 +63,17 @@ const htmlRoot = document.getElementById('htmlRoot');
 const victoryModal = document.getElementById('victoryModal');
 const victoryTitle = document.getElementById('victoryTitle');
 const victoryText = document.getElementById('victoryText');
-const nextRoundBtn = document.getElementById('nextRoundBtn');
-
-// تعديل أزرار شاشة الفوز لدعم نظام التصويت الثنائي
-let victoryButtonContainer = nextRoundBtn.parentElement;
-victoryButtonContainer.innerHTML = `
-    <button id="acceptRematchBtn" class="w-full py-3 rounded-2xl font-black text-xs uppercase tracking-wider text-white bg-gradient-to-r from-emerald-600 to-teal-600 shadow-lg transition-all mb-2">
-        🤝 Play Again (Accept)
-    </button>
-    <button id="declineRematchBtn" class="w-full py-2.5 rounded-2xl font-bold text-xs uppercase tracking-wider text-white bg-rose-600 hover:bg-rose-500 shadow-lg transition-all mb-2">
-        🚪 Decline & Exit to Menu
-    </button>
-`;
 const acceptRematchBtn = document.getElementById('acceptRematchBtn');
 const declineRematchBtn = document.getElementById('declineRematchBtn');
 
 const nameModal = document.getElementById('nameModal');
 const playerNameInput = document.getElementById('playerNameInput');
 const playerPinInput = document.getElementById('playerPinInput');
-const saveNameBtn = document.getElementById('saveNameBtn');
+const authSubmitBtn = document.getElementById('authSubmitBtn');
+const authSwitchBtn = document.getElementById('authSwitchBtn');
+const authModalTitle = document.getElementById('authModalTitle');
+const authModalDesc = document.getElementById('authModalDesc');
+
 const menuUsername = document.getElementById('menuUsername');
 const userPoints = document.getElementById('userPoints');
 
@@ -123,10 +115,10 @@ customModal.id = 'customModal';
 customModal.className = 'fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4 backdrop-blur-xl';
 customModal.innerHTML = `
     <div class="modal-box border border-cyan-500/40 bg-slate-950/90 p-6 rounded-3xl max-w-sm w-full text-center shadow-[0_0_40px_rgba(6,182,212,0.2)] flex flex-col gap-4">
-        <h2 id="customModalTitle" class="font-black text-lg brand-title">Notice</h2>
-        <p id="customModalText" class="text-xs opacity-90 leading-relaxed"></p>
+        <h2 id="customModalTitle" class="font-black text-lg text-cyan-400">Notice</h2>
+        <p id="customModalText" class="text-xs text-slate-300 leading-relaxed"></p>
         <div id="customModalButtons" class="flex gap-2">
-            <button id="customModalOkBtn" class="w-full action-btn font-bold py-2.5 rounded-xl text-xs">OK</button>
+            <button id="customModalOkBtn" class="w-full py-2.5 rounded-xl font-bold text-xs bg-cyan-600 text-white">OK</button>
         </div>
     </div>
 `;
@@ -137,7 +129,7 @@ function showCustomAlert(title, text, onClose = null) {
     document.getElementById('customModalTitle').textContent = title;
     document.getElementById('customModalText').textContent = text;
     let btnContainer = document.getElementById('customModalButtons');
-    btnContainer.innerHTML = `<button id="customModalOkBtn" class="w-full action-btn font-bold py-2.5 rounded-xl text-xs">OK</button>`;
+    btnContainer.innerHTML = `<button id="customModalOkBtn" class="w-full py-2.5 rounded-xl font-bold text-xs bg-cyan-600 text-white">OK</button>`;
     customModal.style.display = 'flex';
     document.getElementById('customModalOkBtn').onclick = () => {
         customModal.style.display = 'none';
@@ -151,8 +143,8 @@ function showCustomConfirm(title, text, onConfirm, onCancel = null) {
     document.getElementById('customModalText').textContent = text;
     let btnContainer = document.getElementById('customModalButtons');
     btnContainer.innerHTML = `
-        <button id="customModalConfirmBtn" class="w-full action-btn font-bold py-2.5 rounded-xl text-xs">Yes, Confirm</button>
-        <button id="customModalCancelBtn" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl text-xs">Cancel</button>
+        <button id="customModalConfirmBtn" class="w-full py-2.5 rounded-xl font-bold text-xs bg-cyan-600 text-white">Yes, Confirm</button>
+        <button id="customModalCancelBtn" class="w-full bg-rose-600 text-white font-bold py-2.5 rounded-xl text-xs">Cancel</button>
     `;
     customModal.style.display = 'flex';
     document.getElementById('customModalConfirmBtn').onclick = () => {
@@ -170,7 +162,7 @@ closeRulesBtn.addEventListener('click', () => { playSound('click'); rulesModal.s
 
 deleteAccountBtn.addEventListener('click', () => {
     playSound('click');
-    showCustomConfirm('Delete Account', 'Are you sure you want to delete your account permanently? This will remove your stats and rank from the server.', async () => {
+    showCustomConfirm('Delete Account', 'Are you sure you want to delete your account permanently?', async () => {
         if (window.db && playerId) {
             try {
                 await window.dbRemove(window.dbRef(window.db, 'players/' + playerId));
@@ -189,9 +181,9 @@ if (!leaderboardList && statsModal) {
     let lbContainer = document.createElement('div');
     lbContainer.className = 'mt-4 text-left';
     lbContainer.innerHTML = `
-        <h3 class="font-bold text-xs mb-2 brand-title uppercase tracking-wider">🏆 Global Arena Leaderboard</h3>
-        <div id="leaderboardList" class="flex flex-col gap-1.5 max-h-36 overflow-y-auto sub-box p-2 rounded-xl border text-xs">
-            <p class="text-center opacity-50 py-2">Loading leaderboard...</p>
+        <h3 class="font-bold text-xs mb-2 text-cyan-400 uppercase tracking-wider">🏆 Global Arena Leaderboard</h3>
+        <div id="leaderboardList" class="flex flex-col gap-1.5 max-h-36 overflow-y-auto bg-black/50 p-2 rounded-xl border border-white/10 text-xs">
+            <p class="text-center text-slate-500 py-2">Loading leaderboard...</p>
         </div>
     `;
     statsModal.querySelector('.modal-box').appendChild(lbContainer);
@@ -211,7 +203,7 @@ let boardStates = Array(9).fill().map(() => Array(9).fill(''));
 
 let playerName = localStorage.getItem('ultimate_player_name') || '';
 let playerPin = localStorage.getItem('ultimate_player_pin') || '';
-let playerId = localStorage.getItem('ultimate_player_id'] || 'p_' + Math.random().toString(36).substring(2, 9);
+let playerId = localStorage.getItem('ultimate_player_id') || 'p_' + Math.random().toString(36).substring(2, 9);
 localStorage.setItem('ultimate_player_id', playerId);
 
 let userArenaPoints = parseInt(localStorage.getItem('ultimate_points')) || 10;
@@ -305,6 +297,126 @@ function registerOnlinePresence(status = 'online') {
     }
 }
 
+// --- نظام تبديل الشاشات (تسجيل الدخول / إنشاء حساب) والتحقق من السيرفر ---
+let isRegisterMode = false;
+
+authSwitchBtn.addEventListener('click', () => {
+    playSound('click');
+    isRegisterMode = !isRegisterMode;
+    if (isRegisterMode) {
+        authModalTitle.textContent = 'Create Account';
+        authModalDesc.textContent = 'Choose lowercase username (no spaces) & 4-digit PIN:';
+        authSubmitBtn.textContent = 'Register';
+        authSwitchBtn.textContent = 'Already have an account? Login';
+    } else {
+        authModalTitle.textContent = 'Player Login';
+        authModalDesc.textContent = 'Enter your lowercase username (no spaces) and 4-digit PIN:';
+        authSubmitBtn.textContent = 'Login';
+        authSwitchBtn.textContent = "Don't have an account? Create one";
+    }
+});
+
+authSubmitBtn.addEventListener('click', async () => {
+    playSound('click');
+    let name = playerNameInput.value.toLowerCase().replace(/\s+/g, '');
+    let pin = playerPinInput.value.trim();
+
+    if (!name || pin.length !== 4 || isNaN(pin)) {
+        showCustomAlert('Error', 'Please enter a valid lowercase name (no spaces) and a 4-digit numeric PIN!');
+        return;
+    }
+
+    if (!window.db) {
+        showCustomAlert('Error', 'Database connecting... Please wait a second.');
+        return;
+    }
+
+    const playersRef = window.dbRef(window.db, 'players');
+    const snapshot = await window.dbGet(playersRef);
+
+    if (isRegisterMode) {
+        // فحص لو الاسم موجود مسبقاً
+        let exists = false;
+        if (snapshot.exists()) {
+            snapshot.forEach(childSnap => {
+                if (childSnap.val().name === name) {
+                    exists = true;
+                }
+            });
+        }
+
+        if (exists) {
+            showCustomAlert('Error', 'Username already taken! Please login or choose another name.');
+            return;
+        }
+
+        // إنشاء حساب جديد
+        playerId = 'p_' + Math.random().toString(36).substring(2, 9);
+        playerName = name;
+        playerPin = pin;
+        userArenaPoints = 10;
+        stats = { total: 0, wins: 0, losses: 0 };
+
+        localStorage.setItem('ultimate_player_id', playerId);
+        localStorage.setItem('ultimate_player_name', playerName);
+        localStorage.setItem('ultimate_player_pin', playerPin);
+        localStorage.setItem('ultimate_points', userArenaPoints);
+        localStorage.setItem('ultimate_stats', JSON.stringify(stats));
+
+        nameModal.style.display = 'none';
+        mainMenu.style.display = 'flex';
+        menuUsername.textContent = playerName;
+        userPoints.textContent = userArenaPoints;
+        registerOnlinePresence();
+        initGame();
+    } else {
+        // تسجيل الدخول
+        let matchedUser = null;
+        let matchedId = null;
+
+        if (snapshot.exists()) {
+            snapshot.forEach(childSnap => {
+                let u = childSnap.val();
+                if (u.name === name && u.pin === pin) {
+                    matchedUser = u;
+                    matchedId = childSnap.key;
+                }
+            });
+        }
+
+        if (!matchedUser) {
+            showCustomAlert('Login Failed', 'Invalid username or 4-digit PIN! If new, click "Create one" below.');
+            return;
+        }
+
+        // نجاح تسجيل الدخول
+        playerId = matchedId;
+        playerName = matchedUser.name;
+        playerPin = matchedUser.pin;
+        userArenaPoints = matchedUser.points || 10;
+
+        localStorage.setItem('ultimate_player_id', playerId);
+        localStorage.setItem('ultimate_player_name', playerName);
+        localStorage.setItem('ultimate_player_pin', playerPin);
+        localStorage.setItem('ultimate_points', userArenaPoints);
+
+        nameModal.style.display = 'none';
+        menuUsername.textContent = playerName;
+        userPoints.textContent = userArenaPoints;
+        registerOnlinePresence();
+
+        if (currentMatchId) {
+            gameMode = 'online-p2p';
+            mainMenu.style.display = 'none';
+            leaveRoomBtn.classList.remove('hidden');
+            listenToMatch(currentMatchId);
+        } else {
+            mainMenu.style.display = 'flex';
+            initGame();
+        }
+    }
+});
+
 function checkPlayerName() {
     if (!playerName || !playerPin) {
         nameModal.style.display = 'flex';
@@ -345,25 +457,6 @@ function checkPlayerName() {
     }
 }
 
-saveNameBtn.addEventListener('click', () => {
-    playSound('click');
-    const name = playerNameInput.value.trim();
-    const pin = playerPinInput.value.trim();
-    if (name && pin.length === 4) {
-        playerName = name;
-        playerPin = pin;
-        localStorage.setItem('ultimate_player_name', playerName);
-        localStorage.setItem('ultimate_player_pin', playerPin);
-        nameModal.style.display = 'none';
-        mainMenu.style.display = 'flex';
-        menuUsername.textContent = playerName;
-        userPoints.textContent = userArenaPoints;
-        registerOnlinePresence();
-    } else {
-        showCustomAlert('Error', 'Please enter your name and a valid 4-digit PIN!');
-    }
-});
-
 function fetchGlobalLeaderboard() {
     if (!window.db) return;
     const playersRef = window.dbRef(window.db, 'players');
@@ -377,7 +470,7 @@ function fetchGlobalLeaderboard() {
         sortedPlayers.slice(0, 5).forEach((p, index) => {
             let row = document.createElement('div');
             row.className = 'flex justify-between items-center py-1 px-2 border-b border-white/10 last:border-none';
-            row.innerHTML = `<span>#${index + 1} ${p.name}</span> <span class="font-bold brand-title">${p.points || 0} pts</span>`;
+            row.innerHTML = `<span>#${index + 1} ${p.name}</span> <span class="font-bold text-cyan-400">${p.points || 0} pts</span>`;
             leaderboardList.appendChild(row);
         });
     }, { onlyOnce: true });
@@ -416,13 +509,13 @@ function fetchOnlinePlayers() {
             let p = players[id];
             
             let div = document.createElement('div');
-            div.className = 'sub-box p-2.5 rounded-xl border flex justify-between items-center text-xs font-bold';
+            div.className = 'bg-black/40 p-2.5 rounded-xl border border-white/10 flex justify-between items-center text-xs font-bold';
             
             if (p.status === 'in-game') {
                 div.innerHTML = `<span>🔴 ${p.name}</span> <span class="text-rose-400 text-[10px] px-2 py-1 rounded bg-rose-950/40 border border-rose-800/50">In Match 🎮</span>`;
             } else {
                 count++;
-                div.innerHTML = `<span>🟢 ${p.name}</span> <button class="action-btn px-3 py-1 rounded-lg text-xs">Challenge</button>`;
+                div.innerHTML = `<span>🟢 ${p.name}</span> <button class="bg-cyan-600 px-3 py-1 rounded-lg text-xs text-white">Challenge</button>`;
                 div.querySelector('button').addEventListener('click', () => sendChallenge(id, p.name));
             }
             onlinePlayersList.appendChild(div);
@@ -587,7 +680,7 @@ function leaveRoom() {
     initGame();
 }
 
-// --- نظام التصويت الثنائي للـ Rematch عند انتهاء الجولة ---
+// نظام التصويت الثنائي للـ Rematch
 acceptRematchBtn.onclick = () => {
     playSound('click');
     acceptRematchBtn.textContent = '⏳ Waiting for Opponent...';
@@ -671,13 +764,11 @@ function listenToMatch(matchId) {
                 showEndModal(data.winnerData.winnerRole, data.winnerData.winnerName, data.winnerData.isCupWin);
             }
 
-            // فحص حالة التصويت الثنائي للـ Rematch
             if (data.postMatch) {
                 let xVote = data.postMatch.X;
                 let oVote = data.postMatch.O;
 
                 if (xVote === 'accepted' && oVote === 'accepted') {
-                    // الاتنين قبلوا! بدء جولة جديدة أوتوماتيك
                     playSound('start');
                     let newScores = scores;
                     if (scores.X >= targetWins || scores.O >= targetWins) {
@@ -695,7 +786,6 @@ function listenToMatch(matchId) {
                         });
                     }
                 } else if (xVote === 'declined' || oVote === 'declined') {
-                    // حد فيهم رفض! إظهار رسالة وخروج الطرفين للقائمة الرئيسية
                     showCustomAlert('Match Ended', 'Opponent declined the rematch. Returning to menu...', () => {
                         leaveRoom();
                     });
@@ -942,7 +1032,7 @@ function handleMatchEnd(winnerRole) {
         window.dbUpdate(matchRef, {
             matchScores: scores,
             winnerData: { winnerRole, winnerName, isCupWin },
-            postMatch: { X: 'pending', O: 'pending' } // تهيئة حالة التصويت الثنائي
+            postMatch: { X: 'pending', O: 'pending' }
         });
     } else {
         showEndModal(winnerRole, winnerName, isCupWin);

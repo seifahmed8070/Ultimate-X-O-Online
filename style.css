@@ -1,7 +1,7 @@
-/* --- تعريف ثيمات اللعبة والـ Variables --- */
+/* --- تعريف ثيمات اللعبة والـ Variables (بخلفية شبه شفافة لتظهر الخلفية المتحركة خلفها) --- */
 .theme-cyberpunk {
-    --bg-color: #030712;
-    --card-bg: rgba(15, 23, 42, 0.88);
+    --bg-color: rgba(3, 7, 18, 0.85);
+    --card-bg: rgba(15, 23, 42, 0.82);
     --primary: #06b6d4;
     --secondary: #14b8a6;
     --accent: #10b981;
@@ -10,8 +10,8 @@
 }
 
 .theme-matrix {
-    --bg-color: #022c22;
-    --card-bg: rgba(2, 44, 34, 0.9);
+    --bg-color: rgba(2, 44, 34, 0.85);
+    --card-bg: rgba(2, 44, 34, 0.85);
     --primary: #22c55e;
     --secondary: #10b981;
     --accent: #84cc16;
@@ -20,8 +20,8 @@
 }
 
 .theme-obsidian {
-    --bg-color: #09090b;
-    --card-bg: rgba(24, 24, 27, 0.9);
+    --bg-color: rgba(9, 9, 11, 0.85);
+    --card-bg: rgba(24, 24, 27, 0.85);
     --primary: #f43f5e;
     --secondary: #fb7185;
     --accent: #e11d48;
@@ -30,8 +30,8 @@
 }
 
 .theme-vaporwave {
-    --bg-color: #2e1065;
-    --card-bg: rgba(46, 16, 101, 0.88);
+    --bg-color: rgba(46, 16, 101, 0.85);
+    --card-bg: rgba(46, 16, 101, 0.85);
     --primary: #ec4899;
     --secondary: #d946ef;
     --accent: #8b5cf6;
@@ -47,7 +47,7 @@ body.app-shell {
     transition: background-color 0.4s ease;
 }
 
-/* --- تنسيق الـ Canvas الخلفي المتحرك --- */
+/* --- تنسيق الـ Canvas الخلفي المتحرك ليشمل الشاشة بالكامل خلف كل شيء --- */
 #bgCanvas {
     position: fixed;
     top: 0;
@@ -75,8 +75,8 @@ body.app-shell {
 .modal-box {
     background-color: var(--card-bg);
     border-color: var(--border-color);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
 }
 
 .brand-title {
@@ -84,7 +84,7 @@ body.app-shell {
 }
 
 .sub-box {
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.45);
     border-color: var(--border-color);
 }
 
@@ -100,7 +100,7 @@ body.app-shell {
 }
 
 .input-field {
-    background: rgba(0, 0, 0, 0.65);
+    background: rgba(0, 0, 0, 0.6);
     border: 1px solid var(--border-color);
     color: var(--text-color);
 }
@@ -137,7 +137,7 @@ body.app-shell {
 }
 
 .overlay-bg {
-    background: rgba(0, 0, 0, 0.92);
+    background: rgba(0, 0, 0, 0.9);
     color: var(--primary);
     backdrop-filter: blur(6px);
 }
@@ -146,7 +146,7 @@ body.app-shell {
     background-color: var(--card-bg);
     border-color: var(--border-color);
     color: var(--text-color);
-    backdrop-filter: blur(16px);
+    backdrop-filter: blur(14px);
 }
 
 .score-x {

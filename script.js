@@ -51,36 +51,37 @@ function playSound(type) {
     }
 }
 
-// --- كود الخلفية المتحركة (Canvas Background Animation للـ X و O) ---
+// --- كود الخلفية المتحركة الشاملة (Canvas Background Animation للـ X و O) ---
 const bgCanvas = document.getElementById('bgCanvas');
 const bgCtx = bgCanvas.getContext('2d');
 let bgParticles = [];
 
 function resizeBgCanvas() {
-    bgCanvas.width = window.innerWidth;
-    bgCanvas.height = window.innerHeight;
+    const dpr = window.devicePixelRatio || 1;
+    bgCanvas.width = window.innerWidth * dpr;
+    bgCanvas.height = window.innerHeight * dpr;
+    bgCtx.scale(dpr, dpr);
 }
 window.addEventListener('resize', resizeBgCanvas);
 resizeBgCanvas();
 
-for (let i = 0; i < 30; i++) {
+for (let i = 0; i < 35; i++) {
     bgParticles.push({
-        x: Math.random() * bgCanvas.width,
-        y: Math.random() * bgCanvas.height,
-        size: Math.floor(Math.random() * 30) + 18,
-        speedY: (Math.random() * 0.8) + 0.3,
-        speedX: (Math.random() - 0.5) * 0.4,
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        size: Math.floor(Math.random() * 32) + 16,
+        speedY: (Math.random() * 0.7) + 0.2,
+        speedX: (Math.random() - 0.5) * 0.3,
         char: Math.random() > 0.5 ? 'X' : 'O',
-        alpha: Math.random() * 0.25 + 0.08,
+        alpha: Math.random() * 0.3 + 0.1,
         rotation: Math.random() * Math.PI * 2,
-        rotSpeed: (Math.random() - 0.5) * 0.015
+        rotSpeed: (Math.random() - 0.5) * 0.012
     });
 }
 
 function animateBgCanvas() {
-    bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+    bgCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
     
-    // جلب لون الثيم الأساسي الحالي أوتوماتيك
     const computedStyle = getComputedStyle(document.documentElement);
     const primaryColor = computedStyle.getPropertyValue('--primary').trim() || '#06b6d4';
 
@@ -90,8 +91,8 @@ function animateBgCanvas() {
         p.rotation += p.rotSpeed;
 
         if (p.y < -50) {
-            p.y = bgCanvas.height + 50;
-            p.x = Math.random() * bgCanvas.width;
+            p.y = window.innerHeight + 50;
+            p.x = Math.random() * window.innerWidth;
         }
 
         bgCtx.save();
@@ -171,13 +172,13 @@ const matchFormatSelect = document.getElementById('matchFormatSelect');
 
 let customModal = document.createElement('div');
 customModal.id = 'customModal';
-customModal.className = 'fixed inset-0 bg-black/85 z-50 hidden items-center justify-center p-4 backdrop-blur-xl';
+customModal.className = 'fixed inset-0 bg-black/75 z-50 hidden items-center justify-center p-4 backdrop-blur-md';
 customModal.innerHTML = `
-    <div class="modal-box border border-cyan-500/40 bg-slate-950/95 p-8 rounded-3xl max-w-sm w-full text-center shadow-[0_0_50px_rgba(6,182,212,0.25)] flex flex-col gap-4 relative z-10">
+    <div class="modal-box border p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl flex flex-col gap-4 relative z-10">
         <h2 id="customModalTitle" class="font-black text-xl text-cyan-400">Notice</h2>
-        <p id="customModalText" class="text-sm text-slate-300 leading-relaxed"></p>
+        <p id="customModalText" class="text-sm text-slate-200 leading-relaxed"></p>
         <div id="customModalButtons" class="flex gap-2 mt-2">
-            <button id="customModalOkBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white">OK</button>
+            <button id="customModalOkBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white cursor-pointer">OK</button>
         </div>
     </div>
 `;
@@ -188,7 +189,7 @@ function showCustomAlert(title, text, onClose = null) {
     document.getElementById('customModalTitle').textContent = title;
     document.getElementById('customModalText').textContent = text;
     let btnContainer = document.getElementById('customModalButtons');
-    btnContainer.innerHTML = `<button id="customModalOkBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white">OK</button>`;
+    btnContainer.innerHTML = `<button id="customModalOkBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white cursor-pointer">OK</button>`;
     customModal.style.display = 'flex';
     document.getElementById('customModalOkBtn').onclick = () => {
         customModal.style.display = 'none';
@@ -202,8 +203,8 @@ function showCustomConfirm(title, text, onConfirm, onCancel = null) {
     document.getElementById('customModalText').textContent = text;
     let btnContainer = document.getElementById('customModalButtons');
     btnContainer.innerHTML = `
-        <button id="customModalConfirmBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white">Yes, Confirm</button>
-        <button id="customModalCancelBtn" class="w-full bg-rose-600 text-white font-bold py-3 rounded-xl text-sm">Cancel</button>
+        <button id="customModalConfirmBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white cursor-pointer">Yes, Confirm</button>
+        <button id="customModalCancelBtn" class="w-full bg-rose-600 text-white font-bold py-3 rounded-xl text-sm cursor-pointer">Cancel</button>
     `;
     customModal.style.display = 'flex';
     document.getElementById('customModalConfirmBtn').onclick = () => {
@@ -257,7 +258,7 @@ if (!leaderboardList && statsModal) {
     lbContainer.innerHTML = `
         <h3 class="font-bold text-xs mb-2 text-cyan-400 uppercase tracking-wider">🏆 Global Arena Leaderboard</h3>
         <div id="leaderboardList" class="flex flex-col gap-1.5 max-h-36 overflow-y-auto bg-black/50 p-2.5 rounded-xl border border-white/10 text-xs">
-            <p class="text-center text-slate-500 py-2">Loading leaderboard...</p>
+            <p class="text-center text-slate-400 py-2">Loading leaderboard...</p>
         </div>
     `;
     statsModal.querySelector('.modal-box').appendChild(lbContainer);
@@ -345,7 +346,6 @@ function registerOnlinePresence(status = 'online') {
     if (!window.db || !playerName || !playerId) return;
     const userRef = window.dbRef(window.db, 'players/' + playerId);
     
-    // التعديل الهام هنا: عند الخروج يتم تحديث الحالة إلى أوفلاين فقط بدلاً من حذف الحساب تماماً لضمان ثبات الترتيب العام
     window.dbOnDisconnect(userRef).update({ 
         status: 'offline',
         lastActive: Date.now() 
@@ -547,7 +547,7 @@ function fetchOnlinePlayers() {
                 div.innerHTML = `<span>🔴 ${p.name}</span> <span class="text-rose-400 text-[10px] px-2.5 py-1 rounded-lg bg-rose-950/40 border border-rose-800/50">In Match 🎮</span>`;
             } else {
                 count++;
-                div.innerHTML = `<span>🟢 ${p.name}</span> <button class="bg-cyan-600 hover:bg-cyan-500 px-3.5 py-1.5 rounded-xl text-xs text-white shadow">Challenge</button>`;
+                div.innerHTML = `<span>🟢 ${p.name}</span> <button class="bg-cyan-600 hover:bg-cyan-500 px-3.5 py-1.5 rounded-xl text-xs text-white shadow cursor-pointer">Challenge</button>`;
                 div.querySelector('button').addEventListener('click', () => sendChallenge(id, p.name));
             }
             onlinePlayersList.appendChild(div);
@@ -646,7 +646,7 @@ function showIncomingChallenge(data) {
     let formatLabel = data.format === '3' ? 'Best of 3' : data.format === '5' ? 'Best of 5' : data.format === 'infinity' ? 'Endless' : 'Single Match';
     
     challengeTitle.textContent = `Challenge from ${data.fromName}!`;
-    challengeText.textContent = `${data.fromName} wants to play a [${formatLabel}] Cup with you.`;
+    challengeText.textContent = `${data.fromName} wants to play a [${formatLabel}] match with you.`;
     document.getElementById('challengeActionButtons').style.display = 'flex';
     cancelChallengeBtn.classList.add('hidden');
     challengeModal.style.display = 'flex';
@@ -883,6 +883,23 @@ homeBtn.addEventListener('click', () => {
     }
 });
 
+// إصلاح زر الاستارت (Reset)
+resetBtn.addEventListener('click', () => {
+    playSound('click');
+    if (gameMode === 'online-p2p' && currentMatchId) {
+        const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
+        window.dbUpdate(matchRef, {
+            boardStates: Array(9).fill().map(() => Array(9).fill('')),
+            boardWins: Array(9).fill(null),
+            activeBoardIndex: null,
+            currentPlayer: 'X',
+            winnerData: null
+        });
+    } else {
+        initGame();
+    }
+});
+
 function initGame() {
     currentPlayer = 'X';
     activeBoardIndex = null;
@@ -928,7 +945,7 @@ function renderBoard() {
 
         for (let c = 0; c < 9; c++) {
             const cellBtn = document.createElement('button');
-            cellBtn.className = 'cell-btn aspect-square rounded-md font-bold text-lg md:text-xl flex items-center justify-center transition-all';
+            cellBtn.className = 'cell-btn aspect-square rounded-md font-bold text-lg md:text-xl flex items-center justify-center transition-all cursor-pointer';
             cellBtn.textContent = boardStates[b] && boardStates[b][c] ? boardStates[b][c] : '';
 
             if ((boardStates[b] && boardStates[b][c] !== '') || !isBoardActive || boardWins[b]) {
@@ -1090,8 +1107,6 @@ function showEndModal(winnerRole, winnerName, isCupWin) {
 function updateStatus() {
     turnIndicator.textContent = currentPlayer;
 }
-
-resetBtn.addEventListener('click', () => { playSound('click'); });
 
 function startApp() {
     setupPresence();

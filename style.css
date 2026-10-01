@@ -1,8 +1,6 @@
-/* --- تعريف ثيمات اللعبة والـ Variables --- */
-/* قمنا بتغميق الألوان جداً (شفافية 90% و 85%) لتكون الخلفية داكنة وتريح العين تماماً */
 .theme-cyberpunk {
-    --bg-color: rgba(3, 7, 18, 0.92);
-    --card-bg: rgba(15, 23, 42, 0.85);
+    --bg-color: rgba(3, 7, 18, 0.94);
+    --card-bg: rgba(15, 23, 42, 0.88);
     --primary: #06b6d4;
     --secondary: #14b8a6;
     --accent: #10b981;
@@ -12,7 +10,7 @@
 
 .theme-matrix {
     --bg-color: rgba(2, 28, 22, 0.95);
-    --card-bg: rgba(2, 44, 34, 0.85);
+    --card-bg: rgba(2, 44, 34, 0.88);
     --primary: #22c55e;
     --secondary: #10b981;
     --accent: #84cc16;
@@ -22,7 +20,7 @@
 
 .theme-obsidian {
     --bg-color: rgba(9, 9, 11, 0.95);
-    --card-bg: rgba(24, 24, 27, 0.85);
+    --card-bg: rgba(24, 24, 27, 0.88);
     --primary: #f43f5e;
     --secondary: #fb7185;
     --accent: #e11d48;
@@ -31,8 +29,8 @@
 }
 
 .theme-vaporwave {
-    --bg-color: rgba(30, 10, 65, 0.92);
-    --card-bg: rgba(46, 16, 101, 0.85);
+    --bg-color: rgba(30, 10, 65, 0.94);
+    --card-bg: rgba(46, 16, 101, 0.88);
     --primary: #ec4899;
     --secondary: #d946ef;
     --accent: #8b5cf6;
@@ -40,7 +38,6 @@
     --border-color: rgba(236, 72, 153, 0.3);
 }
 
-/* --- الهيكل الأساسي للصفحة --- */
 body.app-shell {
     background-color: var(--bg-color);
     color: var(--text-color);
@@ -48,7 +45,6 @@ body.app-shell {
     transition: background-color 0.4s ease;
 }
 
-/* --- تنسيق الـ Canvas الخلفي --- */
 #bgCanvas {
     position: fixed;
     top: 0;
@@ -59,7 +55,6 @@ body.app-shell {
     pointer-events: none;
 }
 
-/* --- تصميم الشبكات (Grids) للعبة الكبيرة والمحلية --- */
 .ultimate-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -72,12 +67,11 @@ body.app-shell {
     gap: 5px;
 }
 
-/* --- المكونات العامة وعناصر واجهة المستخدم --- */
 .modal-box {
     background-color: var(--card-bg);
     border-color: var(--border-color);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
 }
 
 .brand-title {
@@ -85,7 +79,7 @@ body.app-shell {
 }
 
 .sub-box {
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(0, 0, 0, 0.45);
     border-color: var(--border-color);
 }
 
@@ -97,7 +91,7 @@ body.app-shell {
 
 .action-btn:hover {
     opacity: 0.9;
-    transform: translateY(-2px);
+    transform: translateY(-1px);
 }
 
 .input-field {
@@ -125,12 +119,12 @@ body.app-shell {
 
 .active-local-board {
     border-color: var(--primary);
-    box-shadow: 0 0 18px var(--border-color);
+    box-shadow: 0 0 16px var(--border-color);
 }
 
 .my-turn-local {
     border-color: var(--accent);
-    box-shadow: 0 0 18px rgba(16, 185, 129, 0.4);
+    box-shadow: 0 0 18px rgba(16, 185, 129, 0.45);
 }
 
 .waiting-local {
@@ -138,7 +132,7 @@ body.app-shell {
 }
 
 .overlay-bg {
-    background: rgba(0, 0, 0, 0.85);
+    background: rgba(0, 0, 0, 0.88);
     color: var(--primary);
     backdrop-filter: blur(4px);
 }

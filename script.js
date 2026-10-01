@@ -15,21 +15,21 @@ function playSound(type) {
     }
 }
 
-// --- الخلفية المتحركة: شفافة جداً ومريحة للعين ---
+// --- الخلفية المتحركة الهادئة والمريحة للعين ---
 const bgCanvas = document.getElementById('bgCanvas');
 const bgCtx = bgCanvas.getContext('2d');
 let bgParticles = [];
 function resizeBgCanvas() { const dpr = window.devicePixelRatio || 1; bgCanvas.width = window.innerWidth * dpr; bgCanvas.height = window.innerHeight * dpr; bgCtx.scale(dpr, dpr); }
 window.addEventListener('resize', resizeBgCanvas); resizeBgCanvas();
 
-for (let i = 0; i < 35; i++) {
+for (let i = 0; i < 30; i++) {
     bgParticles.push({
         x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight,
-        size: Math.floor(Math.random() * 25) + 12, // حجم أصغر
-        speedY: (Math.random() * 0.6) + 0.2, speedX: (Math.random() - 0.5) * 0.3,
+        size: Math.floor(Math.random() * 22) + 12,
+        speedY: (Math.random() * 0.5) + 0.2, speedX: (Math.random() - 0.5) * 0.2,
         char: Math.random() > 0.5 ? 'X' : 'O',
-        alpha: Math.random() * 0.1 + 0.03, // شفافية ضعيفة جداً لعدم الإزعاج
-        rotation: Math.random() * Math.PI * 2, rotSpeed: (Math.random() - 0.5) * 0.01
+        alpha: Math.random() * 0.08 + 0.02, // هادئة جداً لا تسبب أي إزعاج بصري
+        rotation: Math.random() * Math.PI * 2, rotSpeed: (Math.random() - 0.5) * 0.008
     });
 }
 function animateBgCanvas() {
@@ -45,7 +45,7 @@ function animateBgCanvas() {
 }
 animateBgCanvas();
 
-// --- المتغيرات والعناصر الأساسية ---
+// --- العناصر والأساسيات ---
 const ultimateBoard = document.getElementById('ultimateBoard');
 const turnIndicator = document.getElementById('turnIndicator');
 const resetBtn = document.getElementById('resetBtn');
@@ -149,13 +149,12 @@ htmlRoot.className = currentTheme; themeSelector.value = currentTheme;
 themeSelector.addEventListener('change', (e) => { playSound('click'); currentTheme = e.target.value; htmlRoot.className = currentTheme; localStorage.setItem('ultimate_theme', currentTheme); if (window.db && playerId) window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { theme: currentTheme }); });
 function getTargetWins(formatStr) { if (formatStr === '3') return 2; if (formatStr === '5') return 3; if (formatStr === 'infinity') return Infinity; return 1; }
 
-// --- التنبيهات المخصصة ---
+// --- تنبيهات النظام ---
 let customModal = document.createElement('div'); customModal.id = 'customModal'; customModal.className = 'fixed inset-0 bg-black/80 z-[80] hidden items-center justify-center p-4 backdrop-blur-md';
 customModal.innerHTML = `<div class="modal-box border p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl flex flex-col gap-4 relative z-10"><h2 id="customModalTitle" class="font-black text-xl text-cyan-400">Notice</h2><p id="customModalText" class="text-sm text-slate-200 leading-relaxed"></p><div id="customModalButtons" class="flex gap-2 mt-2"><button id="customModalOkBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white cursor-pointer">OK</button></div></div>`; document.body.appendChild(customModal);
 function showCustomAlert(title, text, onClose = null) { playSound('click'); document.getElementById('customModalTitle').textContent = title; document.getElementById('customModalText').textContent = text; document.getElementById('customModalButtons').innerHTML = `<button id="customModalOkBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white cursor-pointer">OK</button>`; customModal.style.display = 'flex'; document.getElementById('customModalOkBtn').onclick = () => { customModal.style.display = 'none'; if (onClose) onClose(); }; }
 function showCustomConfirm(title, text, onConfirm, onCancel = null) { playSound('click'); document.getElementById('customModalTitle').textContent = title; document.getElementById('customModalText').textContent = text; document.getElementById('customModalButtons').innerHTML = `<button id="customModalConfirmBtn" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 hover:bg-cyan-500 text-white cursor-pointer">Yes</button><button id="customModalCancelBtn" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-3 rounded-xl text-sm cursor-pointer">Cancel</button>`; customModal.style.display = 'flex'; document.getElementById('customModalConfirmBtn').onclick = () => { customModal.style.display = 'none'; onConfirm(); }; document.getElementById('customModalCancelBtn').onclick = () => { customModal.style.display = 'none'; if (onCancel) onCancel(); }; }
 
-// --- الأزرار والقوائم ---
 menuRulesBtn.addEventListener('click', () => { playSound('click'); rulesModal.style.display = 'flex'; });
 closeRulesBtn.addEventListener('click', () => { playSound('click'); rulesModal.style.display = 'none'; });
 if (statsMenuBtn) { statsMenuBtn.addEventListener('click', () => { playSound('click'); profileNameDisplay.textContent = playerName; statPoints.textContent = userArenaPoints; statTotal.textContent = stats.total; fetchGlobalLeaderboard(); statsModal.style.display = 'flex'; }); }
@@ -163,14 +162,13 @@ if (closeStatsBtn) { closeStatsBtn.addEventListener('click', () => { playSound('
 logoutBtn.addEventListener('click', () => { playSound('click'); showCustomConfirm('Logout', 'Are you sure you want to sign out?', async () => { if (window.db && playerId) await window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { status: 'offline' }); localStorage.clear(); location.reload(); }, () => {}); });
 deleteAccountBtn.addEventListener('click', () => { playSound('click'); showCustomConfirm('Delete Account', 'Are you sure you want to delete your account permanently?', async () => { if (window.db && playerId) { await window.dbRemove(window.dbRef(window.db, 'players/' + playerId)); await window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId)); } localStorage.clear(); location.reload(); }, () => {}); });
 
-// إصلاح زر العودة للمينيو (Menu Button Fix)
+// إصلاح زر العودة للمينيو (Menu Button & Cancel Logic)
 homeBtn.addEventListener('click', () => { 
     playSound('click'); 
     if (gameMode === 'online-p2p' && currentMatchId) {
-        // لو وافق انه يخرج -> Leave Room، لو داس كانسل -> ميعملش حاجة ويفضل في الجيم
         showCustomConfirm('Leave Match?', 'Are you sure you want to leave the current match? This will end the game and close the room.', 
-            () => { leaveRoom(); }, // Yes
-            () => {} // Cancel: Do nothing! Stay in game.
+            () => { leaveRoom(); }, // Yes: leaves room
+            () => {} // Cancel: does nothing, stays in game safely!
         );
     } else {
         mainMenu.style.display = 'flex'; 
@@ -200,7 +198,7 @@ function showIncomingChallenge(data) { activeChallengeData = data; currentMatchI
 acceptChallengeBtn.onclick = () => { playSound('start'); challengeModal.style.display = 'none'; onlineLobbyModal.style.display = 'none'; mainMenu.style.display = 'none'; gameMode = 'online-p2p'; myRole = 'O'; gameModeBadge.textContent = `Online vs ${opponentName}`; registerOnlinePresence('in-game'); window.dbUpdate(window.dbRef(window.db, 'matches/' + currentMatchId), { status: 'playing', ['playerNames/O']: playerName }); window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId)); listenToMatch(currentMatchId); };
 rejectChallengeBtn.onclick = () => { playSound('click'); challengeModal.style.display = 'none'; if (activeChallengeData) { window.dbUpdate(window.dbRef(window.db, 'challenges/' + playerId), { status: 'declined' }); setTimeout(() => window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId)), 3000); } };
 
-// --- نظام مراقبة اتصال الخصم (Disconnect Timer) ---
+// --- نظام مراقبة الاتصال والتايمر (30 ثانية خروج تلقائي) ---
 function startDisconnectTimer() {
     if (disconnectTimerInterval) return; 
     disconnectModal.style.display = 'flex';
@@ -302,7 +300,6 @@ function listenToMatch(matchId) {
                 mainMenu.style.display = 'none'; onlineLobbyModal.style.display = 'none'; challengeModal.style.display = 'none'; aiDifficultyModal.style.display = 'none'; 
                 gameMode = 'online-p2p'; connectionStatus.classList.remove('hidden'); connectionStatus.style.display = 'flex'; registerOnlinePresence('in-game'); renderBoard(); updateStatus();
                 
-                // تفعيل مراقبة الخصم بمجرد بدء اللعبة
                 if (!opponentStatusUnsubscribe && matchId) {
                     let parts = matchId.split('_');
                     opponentId = (parts[0] === playerId) ? parts[1] : parts[0];
@@ -358,7 +355,7 @@ function handleCellClick(bIndex, cIndex) {
     if (gameMode === 'pve' && currentPlayer === 'O') { setTimeout(makeAiMove, 600); }
 }
 
-// --- ذكاء اصطناعي احترافي وقوي للمستوى المتوسط والمستحيل ---
+// --- ذكاء اصطناعي احترافي وفائق الذكاء (Grandmaster AI) ---
 function getAiWinBlockMove(b, empty, player) {
     for (let i of empty) { boardStates[b][i] = player; let wins = checkSmallWin(boardStates[b]); boardStates[b][i] = ''; if (wins) return i; }
     return null;
@@ -366,19 +363,13 @@ function getAiWinBlockMove(b, empty, player) {
 
 function evaluateCellForImpossibleAI(b, c) {
     let score = 0;
-    if (c === 4) score += 3; // المركز كويس
-    else if ([0,2,6,8].includes(c)) score += 1; // الأركان بعد المركز
-    
-    // المربع اللي هبعته ليه شكله إيه؟
-    if (boardWins[c] !== null) { 
-        score -= 20; // مصيبة هتديله لعب حر في اللوحة كلها
-    } else {
-        let nextEmpty = [];
-        for (let i=0; i<9; i++) if (boardStates[c][i] === '') nextEmpty.push(i);
+    if (c === 4) score += 4;
+    else if ([0,2,6,8].includes(c)) score += 2;
+    if (boardWins[c] !== null) score -= 30; // تجنب إعطاء المنافس لعب حر
+    else {
+        let nextEmpty = []; for (let i=0; i<9; i++) if (boardStates[c][i] === '') nextEmpty.push(i);
         let oppCanWin = getAiWinBlockMove(c, nextEmpty, 'X');
-        if (oppCanWin !== null) {
-            score -= 10; // هبعته لمربع هو يقدر يكسبه بخطوة واحدة
-        }
+        if (oppCanWin !== null) score -= 15;
     }
     return score;
 }
@@ -388,39 +379,27 @@ function makeAiMove() {
     if (activeBoardIndex === null || boardWins[activeBoardIndex] !== null) { for (let i = 0; i < 9; i++) if (boardWins[i] === null) targetBoards.push(i); } else { targetBoards.push(activeBoardIndex); }
     if (targetBoards.length === 0) return;
     
-    let bestMoves = [];
-    let maxScore = -Infinity;
+    let bestMoves = []; let maxScore = -Infinity;
 
     for (let b of targetBoards) {
-        let empty = [];
-        for (let c = 0; c < 9; c++) if (boardStates[b][c] === '') empty.push(c);
-        
+        let empty = []; for (let c = 0; c < 9; c++) if (boardStates[b][c] === '') empty.push(c);
         if (empty.length > 0) {
             if (aiDifficulty === 'easy') {
                 bestMoves.push({b: b, c: empty[Math.floor(Math.random() * empty.length)]});
             } else if (aiDifficulty === 'medium') {
-                let win = getAiWinBlockMove(b, empty, 'O');
-                let block = getAiWinBlockMove(b, empty, 'X');
+                let win = getAiWinBlockMove(b, empty, 'O'); let block = getAiWinBlockMove(b, empty, 'X');
                 if (win !== null) bestMoves.push({b: b, c: win});
                 else if (block !== null) bestMoves.push({b: b, c: block});
                 else bestMoves.push({b: b, c: empty[Math.floor(Math.random() * empty.length)]});
             } else {
-                // مستوى المستحيل Impossible
-                let win = getAiWinBlockMove(b, empty, 'O');
-                let block = getAiWinBlockMove(b, empty, 'X');
-                
-                // لو ينفع أكسب البوردة دي، أكسبها فوراً
+                let win = getAiWinBlockMove(b, empty, 'O'); let block = getAiWinBlockMove(b, empty, 'X');
                 if (win !== null) { triggerMove(b, win); return; }
-                
-                // لو لازم أصدك
                 if (block !== null) {
-                    let score = 50 + evaluateCellForImpossibleAI(b, block); // الأولوية للصد
+                    let score = 60 + evaluateCellForImpossibleAI(b, block);
                     if (score > maxScore) { maxScore = score; bestMoves = [{b: b, c: block}]; }
                     else if (score === maxScore) { bestMoves.push({b: b, c: block}); }
                     continue;
                 }
-
-                // لو مفيش مكسب مباشر أو صد، قيم كل خطوة صح
                 for (let c of empty) {
                     let score = evaluateCellForImpossibleAI(b, c);
                     if (score > maxScore) { maxScore = score; bestMoves = [{b: b, c: c}]; }
@@ -429,7 +408,6 @@ function makeAiMove() {
             }
         }
     }
-
     if (bestMoves.length > 0) {
         let move = bestMoves[Math.floor(Math.random() * bestMoves.length)];
         triggerMove(move.b, move.c);

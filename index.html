@@ -36,7 +36,7 @@
 </head>
 <body class="app-shell min-h-screen flex flex-col items-center p-3 selection:bg-cyan-500 selection:text-white relative overflow-x-hidden">
 
-    <!-- الخلفية المتحركة الشاملة والواضحة -->
+    <!-- الخلفية المتحركة -->
     <canvas id="bgCanvas"></canvas>
 
     <!-- نافذة انقطاع الاتصال (Disconnect Timer) -->
@@ -46,11 +46,11 @@
             <h2 class="font-black text-xl text-rose-400 mb-2">Opponent Disconnected!</h2>
             <p class="text-sm text-slate-200 mb-4">Waiting for them to reconnect...</p>
             <div class="text-5xl font-black text-white mb-6" id="disconnectTimer">30</div>
-            <button id="forceLeaveBtn" class="w-full py-3.5 rounded-2xl font-bold text-sm bg-rose-600 hover:bg-rose-500 text-white shadow-lg transition-all cursor-pointer">Leave Now</button>
+            <button id="forceLeaveBtn" class="w-full py-3.5 rounded-2xl font-bold text-sm bg-rose-600 hover:bg-rose-500 text-white shadow-lg transition-all cursor-pointer">Leave Match</button>
         </div>
     </div>
 
-    <!-- نافذة طلب إعادة الجولة (Restart Request) للمنافس -->
+    <!-- نافذة طلب إعادة الجولة -->
     <div id="resetRequestModal" class="fixed inset-0 bg-black/80 z-[60] hidden items-center justify-center p-4 backdrop-blur-md">
         <div class="modal-box border p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl relative z-10">
             <h2 class="font-black text-xl text-cyan-400 mb-2">🔄 Restart Request</h2>
@@ -62,6 +62,7 @@
         </div>
     </div>
 
+    <!-- تسجيل الدخول -->
     <div id="nameModal" class="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 backdrop-blur-md">
         <div class="modal-box border p-8 rounded-3xl max-w-md w-full text-center shadow-2xl flex flex-col gap-4 relative z-10">
             <h2 id="authModalTitle" class="modal-title font-black text-3xl mb-1 tracking-wider bg-gradient-to-r from-cyan-400 to-teal-300 bg-clip-text text-transparent">Player Login</h2>
@@ -75,6 +76,7 @@
         </div>
     </div>
 
+    <!-- اختيار البوت -->
     <div id="aiDifficultyModal" class="fixed inset-0 bg-black/75 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
         <div class="modal-box border p-8 rounded-3xl max-w-md w-full text-center shadow-2xl flex flex-col gap-4 relative z-10">
             <h2 class="modal-title font-black text-xl mb-1 text-purple-300">Select AI Difficulty</h2>
@@ -85,6 +87,7 @@
         </div>
     </div>
 
+    <!-- اللوبي -->
     <div id="onlineLobbyModal" class="fixed inset-0 bg-black/75 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
         <div class="modal-box border p-8 rounded-3xl max-w-lg w-full text-center shadow-2xl flex flex-col gap-4 max-h-[85vh] overflow-y-auto relative z-10">
             <div class="flex justify-between items-center">
@@ -99,6 +102,7 @@
         </div>
     </div>
 
+    <!-- التحدي -->
     <div id="challengeModal" class="fixed inset-0 bg-black/75 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
         <div class="modal-box border p-8 rounded-3xl max-w-md w-full text-center shadow-2xl flex flex-col gap-4 relative z-10">
             <h2 id="challengeTitle" class="font-black text-xl text-cyan-300">Incoming Challenge!</h2>
@@ -111,6 +115,7 @@
         </div>
     </div>
 
+    <!-- القواعد -->
     <div id="rulesModal" class="fixed inset-0 bg-black/75 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
         <div class="modal-box border p-8 rounded-3xl max-w-md w-full text-center shadow-2xl flex flex-col gap-4 relative z-10">
             <h2 class="font-black text-xl text-cyan-400">📜 Game Rules</h2>
@@ -123,6 +128,7 @@
         </div>
     </div>
 
+    <!-- المنيو الرئيسي -->
     <div id="mainMenu" class="fixed inset-0 bg-black/75 z-40 flex items-center justify-center p-4 backdrop-blur-md">
         <div class="modal-box border p-8 rounded-3xl max-w-md w-full text-center shadow-2xl flex flex-col gap-5 relative overflow-hidden z-10">
             <div class="absolute -top-16 -right-16 w-40 h-40 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
@@ -155,6 +161,7 @@
         </div>
     </div>
 
+    <!-- البروفايل -->
     <div id="statsModal" class="fixed inset-0 bg-black/75 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
         <div class="modal-box border p-8 rounded-3xl max-w-md w-full text-center shadow-2xl max-h-[90vh] overflow-y-auto relative z-10">
             <h2 class="font-bold text-xl mb-4 text-cyan-400">Player Profile & Stats</h2>
@@ -170,7 +177,7 @@
                 </div>
             </div>
             <button id="logoutBtn" class="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3.5 rounded-2xl text-xs mb-2.5 shadow-lg transition-all cursor-pointer">🚪 Logout (Sign Out)</button>
-            <button id="deleteAccountBtn" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-3.5 rounded-2xl text-xs mb-3 shadow-lg transition-all cursor-pointer">🗑️ Delete Account</button>
+            <button id="deleteAccountBtn" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-3.5 rounded-2xl text-xs mb-3 shadow-lg transition-all cursor-pointer">🗑️️ Delete Account</button>
             <button id="closeStatsBtn" class="w-full py-3.5 rounded-2xl font-bold text-xs bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/10 transition-all cursor-pointer">Back to Menu</button>
         </div>
     </div>
@@ -193,7 +200,7 @@
 
     <div class="w-full max-w-lg control-panel border px-3 py-2 rounded-xl shadow-lg flex flex-col mt-2 relative z-10">
         <div class="flex flex-wrap justify-between items-center gap-2">
-            <!-- لمبة الاتصال للأونلاين (مخفية في الاوفلاين) -->
+            <!-- لمبة الاتصال للأونلاين -->
             <div id="connectionStatus" class="hidden items-center gap-1.5 text-[10px] md:text-xs font-bold sub-box px-2.5 py-1.5 rounded-lg border">
                 <span class="w-2 h-2 rounded-full bg-emerald-500" id="connDot"></span>
                 <span id="connText">Online</span>
@@ -209,6 +216,7 @@
         <div id="ultimateBoard" class="ultimate-grid"></div>
     </main>
 
+    <!-- شاشة الفوز -->
     <div id="victoryModal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
         <div class="modal-box border p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl relative z-10">
             <div id="victoryIcon" class="text-4xl mb-2">🎉</div>

@@ -65,15 +65,18 @@ const victoryTitle = document.getElementById('victoryTitle');
 const victoryText = document.getElementById('victoryText');
 const nextRoundBtn = document.getElementById('nextRoundBtn');
 
+// تعديل أزرار شاشة الفوز لدعم نظام التصويت الثنائي
 let victoryButtonContainer = nextRoundBtn.parentElement;
-let victoryMenuBtn = document.getElementById('victoryMenuBtn');
-if (!victoryMenuBtn && victoryButtonContainer) {
-    victoryMenuBtn = document.createElement('button');
-    victoryMenuBtn.id = 'victoryMenuBtn';
-    victoryMenuBtn.className = 'w-full sub-box border font-bold py-2.5 rounded-xl text-sm mt-2 transition-all hover:border-cyan-400';
-    victoryMenuBtn.textContent = '🏠 Main Menu';
-    victoryButtonContainer.appendChild(victoryMenuBtn);
-}
+victoryButtonContainer.innerHTML = `
+    <button id="acceptRematchBtn" class="w-full py-3 rounded-2xl font-black text-xs uppercase tracking-wider text-white bg-gradient-to-r from-emerald-600 to-teal-600 shadow-lg transition-all mb-2">
+        🤝 Play Again (Accept)
+    </button>
+    <button id="declineRematchBtn" class="w-full py-2.5 rounded-2xl font-bold text-xs uppercase tracking-wider text-white bg-rose-600 hover:bg-rose-500 shadow-lg transition-all mb-2">
+        🚪 Decline & Exit to Menu
+    </button>
+`;
+const acceptRematchBtn = document.getElementById('acceptRematchBtn');
+const declineRematchBtn = document.getElementById('declineRematchBtn');
 
 const nameModal = document.getElementById('nameModal');
 const playerNameInput = document.getElementById('playerNameInput');
@@ -99,10 +102,6 @@ const acceptChallengeBtn = document.getElementById('acceptChallengeBtn');
 const rejectChallengeBtn = document.getElementById('rejectChallengeBtn');
 const cancelChallengeBtn = document.getElementById('cancelChallengeBtn');
 
-const rematchModal = document.getElementById('rematchModal');
-const acceptRematchBtn = document.getElementById('acceptRematchBtn');
-const rejectRematchBtn = document.getElementById('rejectRematchBtn');
-
 const rulesModal = document.getElementById('rulesModal');
 const menuRulesBtn = document.getElementById('menuRulesBtn');
 const closeRulesBtn = document.getElementById('closeRulesBtn');
@@ -121,9 +120,9 @@ const matchFormatSelect = document.getElementById('matchFormatSelect');
 // مودال مخصص داخل الموقع
 let customModal = document.createElement('div');
 customModal.id = 'customModal';
-customModal.className = 'fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4 backdrop-blur-md';
+customModal.className = 'fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4 backdrop-blur-xl';
 customModal.innerHTML = `
-    <div class="modal-box border-2 p-6 rounded-2xl max-w-sm w-full text-center shadow-2xl flex flex-col gap-4">
+    <div class="modal-box border border-cyan-500/40 bg-slate-950/90 p-6 rounded-3xl max-w-sm w-full text-center shadow-[0_0_40px_rgba(6,182,212,0.2)] flex flex-col gap-4">
         <h2 id="customModalTitle" class="font-black text-lg brand-title">Notice</h2>
         <p id="customModalText" class="text-xs opacity-90 leading-relaxed"></p>
         <div id="customModalButtons" class="flex gap-2">
@@ -212,7 +211,7 @@ let boardStates = Array(9).fill().map(() => Array(9).fill(''));
 
 let playerName = localStorage.getItem('ultimate_player_name') || '';
 let playerPin = localStorage.getItem('ultimate_player_pin') || '';
-let playerId = localStorage.getItem('ultimate_player_id') || 'p_' + Math.random().toString(36).substring(2, 9);
+let playerId = localStorage.getItem('ultimate_player_id'] || 'p_' + Math.random().toString(36).substring(2, 9);
 localStorage.setItem('ultimate_player_id', playerId);
 
 let userArenaPoints = parseInt(localStorage.getItem('ultimate_points')) || 10;
@@ -226,7 +225,6 @@ let opponentName = 'Opponent';
 let activeMatchUnsubscribe = null;
 let activeChallengeRef = null;
 let myChallengeStatusListener = null;
-let disconnectWatchTimer = null;
 
 let currentFormat = '1';
 let targetWins = 1;
@@ -234,7 +232,6 @@ let targetWins = 1;
 htmlRoot.className = currentTheme;
 themeSelector.value = currentTheme;
 
-// حفظ الثيم على السيرفر واللوكال ديسك عند تغييره
 themeSelector.addEventListener('change', (e) => {
     playSound('click');
     currentTheme = e.target.value;
@@ -462,8 +459,7 @@ function sendChallenge(targetId, targetName) {
         status: 'waiting',
         format: selectedFormat,
         matchScores: { X: 0, O: 0 },
-        playerNames: { X: playerName, O: targetName },
-        lastActiveTime: Date.now()
+        playerNames: { X: playerName, O: targetName }
     });
 
     const targetChallengeRef = window.dbRef(window.db, 'challenges/' + targetId);
@@ -552,8 +548,7 @@ acceptChallengeBtn.onclick = () => {
     const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
     window.dbUpdate(matchRef, {
         status: 'playing',
-        ['playerNames/O']: playerName,
-        lastActiveTime: Date.now()
+        ['playerNames/O']: playerName
     });
 
     window.dbRemove(window.dbRef(window.db, 'challenges/' + playerId));
@@ -578,7 +573,6 @@ leaveRoomBtn.addEventListener('click', () => {
 });
 
 function leaveRoom() {
-    if (disconnectWatchTimer) clearInterval(disconnectWatchTimer);
     if (currentMatchId && window.db) {
         window.dbRemove(window.dbRef(window.db, 'matches/' + currentMatchId));
     }
@@ -593,56 +587,31 @@ function leaveRoom() {
     initGame();
 }
 
-function requestRestart() {
+// --- نظام التصويت الثنائي للـ Rematch عند انتهاء الجولة ---
+acceptRematchBtn.onclick = () => {
     playSound('click');
+    acceptRematchBtn.textContent = '⏳ Waiting for Opponent...';
+    acceptRematchBtn.disabled = true;
+
     if (gameMode === 'online-p2p' && currentMatchId && window.db) {
-        const matchRef = window.dbRef(window.db, `matches/${currentMatchId}/rematch`);
-        window.dbSet(matchRef, { from: myRole, status: 'pending' });
-        resetBtn.textContent = 'Wait...';
-        nextRoundBtn.textContent = 'Waiting for Opponent...';
+        const matchRef = window.dbRef(window.db, `matches/${currentMatchId}/postMatch`);
+        window.dbUpdate(matchRef, { [myRole]: 'accepted' });
     } else {
-        if(victoryModal.style.display === 'flex' && victoryTitle.textContent.includes('CUP')) {
-            scores = { X: 0, O: 0 };
-        }
+        victoryModal.style.display = 'none';
         initGame();
     }
-}
-
-acceptRematchBtn.onclick = () => {
-    playSound('start');
-    rematchModal.style.display = 'none';
-    
-    let newScores = scores;
-    if (scores.X >= targetWins || scores.O >= targetWins) {
-        newScores = { X: 0, O: 0 };
-    }
-
-    const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
-    window.dbUpdate(matchRef, {
-        boardStates: Array(9).fill().map(() => Array(9).fill('')),
-        boardWins: Array(9).fill(null),
-        activeBoardIndex: null,
-        currentPlayer: 'X',
-        winnerData: null,
-        rematch: null,
-        matchScores: newScores,
-        lastActiveTime: Date.now()
-    });
 };
 
-rejectRematchBtn.onclick = () => {
+declineRematchBtn.onclick = () => {
     playSound('click');
-    rematchModal.style.display = 'none';
-    window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}/rematch`), { status: 'declined', from: myRole });
-};
-
-if (victoryMenuBtn) {
-    victoryMenuBtn.onclick = () => {
-        playSound('click');
+    if (gameMode === 'online-p2p' && currentMatchId && window.db) {
+        const matchRef = window.dbRef(window.db, `matches/${currentMatchId}/postMatch`);
+        window.dbUpdate(matchRef, { [myRole]: 'declined' });
+    } else {
         victoryModal.style.display = 'none';
         leaveRoom();
-    };
-}
+    }
+};
 
 function sanitizeBoardStates(data) {
     let clean = Array(9).fill().map(() => Array(9).fill(''));
@@ -670,18 +639,6 @@ function listenToMatch(matchId) {
     if (activeMatchUnsubscribe) {
         activeMatchUnsubscribe();
     }
-    
-    // مراقبة انسحاب الخصم المفاجئ (Rage Quit Handler)
-    if (disconnectWatchTimer) clearInterval(disconnectWatchTimer);
-    disconnectWatchTimer = setInterval(() => {
-        if (gameMode === 'online-p2p' && currentMatchId && window.db) {
-            const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
-            window.dbRef(window.db, 'players').get().then(snapshot => {
-                // فحص بسيط لو الروم ما زالت نشطة والخصم غاب
-            });
-        }
-    }, 4000);
-
     const matchRef = window.dbRef(window.db, 'matches/' + matchId);
     activeMatchUnsubscribe = window.dbOnValue(matchRef, (snapshot) => {
         const data = snapshot.val();
@@ -706,29 +663,45 @@ function listenToMatch(matchId) {
             const isBoardReset = boardWins.every(win => win === null);
             if (isBoardReset) {
                 victoryModal.style.display = 'none';
+                acceptRematchBtn.textContent = '🤝 Play Again (Accept)';
+                acceptRematchBtn.disabled = false;
             }
 
             if (data.winnerData) {
                 showEndModal(data.winnerData.winnerRole, data.winnerData.winnerName, data.winnerData.isCupWin);
             }
-            
-            // طلب الـ Rematch يظهر حصرياً "جوه الروم" للطرف الآخر
-            if (data.rematch) {
-                if (data.rematch.status === 'pending' && data.rematch.from !== myRole) {
-                    playSound('bell');
-                    rematchModal.style.display = 'flex';
-                } else if (data.rematch.status === 'declined' && data.rematch.from !== myRole) {
-                    showCustomAlert('Rematch Declined', 'Opponent declined the rematch request.');
-                    resetBtn.textContent = 'Restart';
-                    nextRoundBtn.textContent = 'Play Again';
-                    window.dbUpdate(matchRef, { rematch: null }); 
-                }
-            } else {
-                rematchModal.style.display = 'none';
-                resetBtn.textContent = 'Restart';
-                nextRoundBtn.textContent = 'Play Again';
-            }
 
+            // فحص حالة التصويت الثنائي للـ Rematch
+            if (data.postMatch) {
+                let xVote = data.postMatch.X;
+                let oVote = data.postMatch.O;
+
+                if (xVote === 'accepted' && oVote === 'accepted') {
+                    // الاتنين قبلوا! بدء جولة جديدة أوتوماتيك
+                    playSound('start');
+                    let newScores = scores;
+                    if (scores.X >= targetWins || scores.O >= targetWins) {
+                        newScores = { X: 0, O: 0 };
+                    }
+                    if (myRole === 'X') {
+                        window.dbUpdate(matchRef, {
+                            boardStates: Array(9).fill().map(() => Array(9).fill('')),
+                            boardWins: Array(9).fill(null),
+                            activeBoardIndex: null,
+                            currentPlayer: 'X',
+                            winnerData: null,
+                            postMatch: null,
+                            matchScores: newScores
+                        });
+                    }
+                } else if (xVote === 'declined' || oVote === 'declined') {
+                    // حد فيهم رفض! إظهار رسالة وخروج الطرفين للقائمة الرئيسية
+                    showCustomAlert('Match Ended', 'Opponent declined the rematch. Returning to menu...', () => {
+                        leaveRoom();
+                    });
+                }
+            }
+            
             if (data.status === 'playing') {
                 if (myChallengeStatusListener) {
                     myChallengeStatusListener();
@@ -745,7 +718,7 @@ function listenToMatch(matchId) {
                 updateStatus();
             }
         } else {
-            showCustomAlert('Room Closed', 'The match room was closed or opponent disconnected.', () => {
+            showCustomAlert('Room Closed', 'The match room was closed by the opponent.', () => {
                 leaveRoom();
             });
         }
@@ -882,8 +855,7 @@ function handleCellClick(bIndex, cIndex) {
             boardStates: boardStates,
             boardWins: boardWins,
             activeBoardIndex: activeBoardIndex,
-            currentPlayer: currentPlayer,
-            lastActiveTime: Date.now()
+            currentPlayer: currentPlayer
         });
     }
 
@@ -926,9 +898,7 @@ function checkUltimateWin() {
 
 function handleMatchEnd(winnerRole) {
     const isMe = (gameMode === 'online-p2p') ? (winnerRole === myRole) : (winnerRole === 'X');
-    if (winnerRole === 'DRAW') {
-        playSound('win');
-    } else if (isMe) {
+    if (winnerRole === 'DRAW' || isMe) {
         playSound('win');
     } else {
         playSound('lose');
@@ -971,7 +941,8 @@ function handleMatchEnd(winnerRole) {
         const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
         window.dbUpdate(matchRef, {
             matchScores: scores,
-            winnerData: { winnerRole, winnerName, isCupWin }
+            winnerData: { winnerRole, winnerName, isCupWin },
+            postMatch: { X: 'pending', O: 'pending' } // تهيئة حالة التصويت الثنائي
         });
     } else {
         showEndModal(winnerRole, winnerName, isCupWin);
@@ -988,15 +959,13 @@ function showEndModal(winnerRole, winnerName, isCupWin) {
         if (isCupWin) {
             victoryTitle.textContent = isMe ? `🏆 YOU WON THE CUP! 🏆` : `💔 ${winnerName} WON THE CUP! 💔`;
             victoryText.textContent = `Target: ${targetWins} Wins Reached!`;
-            scores = { X: 0, O: 0 };
         } else {
             victoryTitle.textContent = isMe ? `🎉 YOU WON THE ROUND! 🎉` : `😢 YOU LOST! (${winnerName} Wins)`;
-            victoryText.textContent = `Score updated. Next round ready!`;
+            victoryText.textContent = `Choose your action for the next match:`;
         }
     }
 
     victoryModal.style.display = 'flex';
-    nextRoundBtn.onclick = requestRestart;
 }
 
 function updateStatus() {

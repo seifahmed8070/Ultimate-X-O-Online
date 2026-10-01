@@ -174,14 +174,11 @@ if (closeStatsBtn) {
     closeStatsBtn.addEventListener('click', () => { playSound('click'); statsModal.style.display = 'none'; });
 }
 
-
-// --- الجزء الأهم: نظام الاتصال الذكي اللي بيعالج التقطيع والريفرش ---
 function setupPresence() {
     if (!window.db) return;
     const connectedRef = window.dbRef(window.db, ".info/connected");
     window.dbOnValue(connectedRef, (snap) => {
         if (snap.val() === true && playerName) {
-            // كل ما النت يشبك أو المتصفح يعمل ريفرش، بيرجع يسجلك أونلاين فوراً
             registerOnlinePresence(gameMode === 'online-p2p' ? 'in-game' : 'online');
         }
     });
@@ -191,7 +188,6 @@ function registerOnlinePresence(status = 'online') {
     if (!window.db || !playerName) return;
     const userRef = window.dbRef(window.db, 'players/' + playerId);
     
-    // تأكيد إنك هتمسح بياناتك لو قفلت الصفحة
     window.dbOnDisconnect(userRef).remove().then(() => {
         window.dbSet(userRef, { 
             name: playerName, 
@@ -211,8 +207,6 @@ function registerOnlinePresence(status = 'online') {
         });
     }
 }
-// ------------------------------------------------------------
-
 
 function checkPlayerName() {
     if (!playerName) {
@@ -457,7 +451,10 @@ function requestRestart() {
         resetBtn.textContent = 'Wait...';
         nextRoundBtn.textContent = 'Waiting...';
     } else {
-        scores = { X: 0, O: 0 };
+        // في الأوفلاين، إعادة التعيين مباشرة بدون طلب موافقة
+        if(victoryModal.style.display === 'flex' && victoryTitle.textContent.includes('CUP')) {
+            scores = { X: 0, O: 0 };
+        }
         initGame();
     }
 }
@@ -690,6 +687,13 @@ function handleCellClick(bIndex, cIndex) {
         return;
     }
 
+    // --- التعديل هنا: فحص التعادل الكلي وإرسال 'DRAW' كفائز ---
+    const isGlobalDraw = boardWins.every(win => win !== null);
+    if (isGlobalDraw) {
+        handleMatchEnd('DRAW');
+        return;
+    }
+
     activeBoardIndex = (boardWins[cIndex] !== null) ? null : cIndex;
     currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
 
@@ -740,22 +744,36 @@ function checkUltimateWin() {
     return wins.some(([x,y,z]) => boardWins[x] && boardWins[x] !== 'DRAW' && boardWins[x] === boardWins[y] && boardWins[x] === boardWins[z]);
 }
 
+// --- التعديل هنا: التعامل مع التعادل (DRAW) والنقاط المخصصة ---
 function handleMatchEnd(winnerRole) {
     playSound('win');
-    scores[winnerRole]++;
-    scoreXEl.textContent = scores.X;
-    scoreOEl.textContent = scores.O;
     stats.total++;
     
-    let winnerName = (gameMode === 'online-p2p') ? (winnerRole === myRole ? playerName : opponentName) : `Player ${winnerRole}`;
+    let winnerName = 'No One';
+    let isCupWin = false;
 
-    if(winnerRole === 'X') { 
-        stats.wins++; 
-        userArenaPoints += 3; 
-    } else { 
-        stats.losses++; 
-        userArenaPoints = Math.max(0, userArenaPoints - 1); 
+    if (winnerRole === 'DRAW') {
+        // في حالة التعادل، إعطاء نقطة واحدة
+        userArenaPoints += 1;
+    } else {
+        scores[winnerRole]++;
+        winnerName = (gameMode === 'online-p2p') ? (winnerRole === myRole ? playerName : opponentName) : `Player ${winnerRole}`;
+        
+        // حساب الفوز والخسارة وتوزيع الـ 3 نقاط
+        const isWin = (gameMode === 'online-p2p') ? (winnerRole === myRole) : (winnerRole === 'X');
+        if (isWin) { 
+            stats.wins++; 
+            userArenaPoints += 3; 
+        } else { 
+            stats.losses++; 
+            userArenaPoints = Math.max(0, userArenaPoints - 1); 
+        }
+        
+        isCupWin = scores[winnerRole] >= targetWins;
     }
+    
+    scoreXEl.textContent = scores.X;
+    scoreOEl.textContent = scores.O;
     
     localStorage.setItem('ultimate_points', userArenaPoints);
     localStorage.setItem('ultimate_stats', JSON.stringify(stats));
@@ -763,8 +781,6 @@ function handleMatchEnd(winnerRole) {
     if (window.db) {
         window.dbUpdate(window.dbRef(window.db, 'players/' + playerId), { points: userArenaPoints });
     }
-
-    const isCupWin = scores[winnerRole] >= targetWins;
 
     if (gameMode === 'online-p2p' && currentMatchId && window.db) {
         const matchRef = window.dbRef(window.db, 'matches/' + currentMatchId);
@@ -777,16 +793,22 @@ function handleMatchEnd(winnerRole) {
     }
 }
 
+// --- التعديل هنا: إظهار رسالة التعادل المناسبة للطرفين ---
 function showEndModal(winnerRole, winnerName, isCupWin) {
-    const isMe = (gameMode === 'online-p2p') ? (winnerRole === myRole) : (winnerRole === 'X');
-
-    if (isCupWin) {
-        victoryTitle.textContent = isMe ? `🏆 YOU WON THE CUP! 🏆` : `💔 ${winnerName} WON THE CUP! 💔`;
-        victoryText.textContent = `Target: ${targetWins} Wins Reached!`;
-        scores = { X: 0, O: 0 };
+    if (winnerRole === 'DRAW') {
+        victoryTitle.textContent = `🤝 IT'S A DRAW! 🤝`;
+        victoryText.textContent = `Both played well! (+1 pt)`;
     } else {
-        victoryTitle.textContent = isMe ? `🎉 YOU WON THE ROUND! 🎉` : `😢 YOU LOST! (${winnerName} Wins)`;
-        victoryText.textContent = `Score updated. Next round ready!`;
+        const isMe = (gameMode === 'online-p2p') ? (winnerRole === myRole) : (winnerRole === 'X');
+
+        if (isCupWin) {
+            victoryTitle.textContent = isMe ? `🏆 YOU WON THE CUP! 🏆` : `💔 ${winnerName} WON THE CUP! 💔`;
+            victoryText.textContent = `Target: ${targetWins} Wins Reached!`;
+            scores = { X: 0, O: 0 };
+        } else {
+            victoryTitle.textContent = isMe ? `🎉 YOU WON THE ROUND! 🎉` : `😢 YOU LOST! (${winnerName} Wins)`;
+            victoryText.textContent = `Score updated. Next round ready!`;
+        }
     }
 
     victoryModal.style.display = 'flex';
@@ -799,13 +821,11 @@ function updateStatus() {
 
 resetBtn.addEventListener('click', () => { playSound('click'); requestRestart(); });
 
-// -- الدالة الأساسية لتشغيل اللعبة بعد التأكد من الفايربيس --
 function startApp() {
     setupPresence();
     checkPlayerName();
 }
 
-// حل مشكلة الريفرش والسباق مع الفايربيس
 if (window.db) {
     startApp();
 } else {

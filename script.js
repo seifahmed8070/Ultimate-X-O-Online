@@ -39,7 +39,6 @@ const victoryTitle = document.getElementById('victoryTitle');
 const victoryText = document.getElementById('victoryText');
 const nextRoundBtn = document.getElementById('nextRoundBtn');
 
-// إضافة زرار العودة للقائمة الرئيسية جوه نافذة الفوز بجانب الـ Play Again
 let victoryButtonContainer = nextRoundBtn.parentElement;
 let victoryMenuBtn = document.getElementById('victoryMenuBtn');
 if (!victoryMenuBtn && victoryButtonContainer) {
@@ -84,6 +83,55 @@ const statTotal = document.getElementById('statTotal');
 const leaveRoomBtn = document.getElementById('leaveRoomBtn');
 const matchFormatSelect = document.getElementById('matchFormatSelect');
 
+// --- مودال مخصص داخل الموقع بدلاً من رسائل جوجل المنفرة (Alert / Confirm) ---
+let customModal = document.createElement('div');
+customModal.id = 'customModal';
+customModal.className = 'fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4 backdrop-blur-md';
+customModal.innerHTML = `
+    <div class="modal-box border-2 p-6 rounded-2xl max-w-sm w-full text-center shadow-2xl flex flex-col gap-4">
+        <h2 id="customModalTitle" class="font-black text-lg brand-title">Notice</h2>
+        <p id="customModalText" class="text-xs opacity-90 leading-relaxed"></p>
+        <div id="customModalButtons" class="flex gap-2">
+            <button id="customModalOkBtn" class="w-full action-btn font-bold py-2.5 rounded-xl text-xs">OK</button>
+        </div>
+    </div>
+`;
+document.body.appendChild(customModal);
+
+function showCustomAlert(title, text, onClose = null) {
+    playSound('click');
+    document.getElementById('customModalTitle').textContent = title;
+    document.getElementById('customModalText').textContent = text;
+    let btnContainer = document.getElementById('customModalButtons');
+    btnContainer.innerHTML = `<button id="customModalOkBtn" class="w-full action-btn font-bold py-2.5 rounded-xl text-xs">OK</button>`;
+    customModal.style.display = 'flex';
+    document.getElementById('customModalOkBtn').onclick = () => {
+        customModal.style.display = 'none';
+        if (onClose) onClose();
+    };
+}
+
+function showCustomConfirm(title, text, onConfirm, onCancel = null) {
+    playSound('click');
+    document.getElementById('customModalTitle').textContent = title;
+    document.getElementById('customModalText').textContent = text;
+    let btnContainer = document.getElementById('customModalButtons');
+    btnContainer.innerHTML = `
+        <button id="customModalConfirmBtn" class="w-full action-btn font-bold py-2.5 rounded-xl text-xs">Yes, Confirm</button>
+        <button id="customModalCancelBtn" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl text-xs">Cancel</button>
+    `;
+    customModal.style.display = 'flex';
+    document.getElementById('customModalConfirmBtn').onclick = () => {
+        customModal.style.display = 'none';
+        onConfirm();
+    };
+    document.getElementById('customModalCancelBtn').onclick = () => {
+        customModal.style.display = 'none';
+        if (onCancel) onCancel();
+    };
+}
+// -------------------------------------------------------------
+
 const resetDataBtn = document.createElement('button');
 resetDataBtn.id = 'resetDataBtn';
 resetDataBtn.className = 'w-full bg-rose-600/85 hover:bg-rose-600 text-white font-bold py-2.5 rounded-xl text-sm mb-2 shadow-lg transition-all';
@@ -95,7 +143,7 @@ if (statsModal) {
 
 resetDataBtn.addEventListener('click', async () => {
     playSound('click');
-    if (confirm('Are you sure you want to reset your local data and name?')) {
+    showCustomConfirm('Reset Data', 'Are you sure you want to reset your local data and name?', async () => {
         if (window.db && playerId) {
             try {
                 await window.dbRemove(window.dbRef(window.db, 'players/' + playerId));
@@ -105,9 +153,8 @@ resetDataBtn.addEventListener('click', async () => {
             }
         }
         localStorage.clear();
-        alert('Data cleared successfully! The page will reload.');
-        location.reload();
-    }
+        showCustomAlert('Success', 'Data cleared successfully! The page will reload.', () => location.reload());
+    });
 });
 
 let leaderboardList = document.getElementById('leaderboardList');
@@ -229,13 +276,32 @@ function checkPlayerName() {
         userPoints.textContent = userArenaPoints;
         registerOnlinePresence();
 
-        if (currentMatchId) {
-            gameMode = 'online-p2p';
-            mainMenu.style.display = 'none';
-            leaveRoomBtn.classList.remove('hidden');
-            listenToMatch(currentMatchId);
+        if (currentMatchId && window.db) {
+            const matchCheckRef = window.dbRef(window.db, 'matches/' + currentMatchId);
+            window.dbOnValue(matchCheckRef, (snapshot) => {
+                const matchData = snapshot.val();
+                if (matchData) {
+                    gameMode = 'online-p2p';
+                    mainMenu.style.display = 'none';
+                    onlineLobbyModal.style.display = 'none';
+                    challengeModal.style.display = 'none';
+                    aiDifficultyModal.style.display = 'none';
+                    leaveRoomBtn.classList.remove('hidden');
+                    listenToMatch(currentMatchId);
+                } else {
+                    localStorage.removeItem('ultimate_match_id');
+                    localStorage.removeItem('ultimate_my_role');
+                    currentMatchId = null;
+                    leaveRoomBtn.classList.add('hidden');
+                    gameMode = 'pve';
+                    gameModeBadge.textContent = 'Offline Mode';
+                    mainMenu.style.display = 'flex';
+                    initGame();
+                }
+            }, { onlyOnce: true });
         } else {
             mainMenu.style.display = 'flex';
+            initGame();
         }
     }
 }
@@ -252,7 +318,7 @@ saveNameBtn.addEventListener('click', () => {
         userPoints.textContent = userArenaPoints;
         registerOnlinePresence();
     } else {
-        alert('Please enter your name!');
+        showCustomAlert('Error', 'Please enter your name!');
     }
 });
 
@@ -368,7 +434,7 @@ function sendChallenge(targetId, targetName) {
     myChallengeStatusListener = window.dbOnValue(targetChallengeRef, (snap) => {
         const data = snap.val();
         if (data && data.status === 'declined') {
-            alert(`${targetName} declined your challenge.`);
+            showCustomAlert('Challenge Declined', `${targetName} declined your challenge.`);
             challengeModal.style.display = 'none';
             onlineLobbyModal.style.display = 'flex';
             window.dbRemove(window.dbRef(window.db, 'matches/' + currentMatchId));
@@ -434,9 +500,9 @@ rejectChallengeBtn.onclick = () => {
 
 leaveRoomBtn.addEventListener('click', () => {
     playSound('click');
-    if (confirm('Are you sure you want to leave the current match room?')) {
+    showCustomConfirm('Leave Room', 'Are you sure you want to leave? This will close the match room.', () => {
         leaveRoom();
-    }
+    });
 });
 
 function leaveRoom() {
@@ -496,7 +562,6 @@ rejectRematchBtn.onclick = () => {
     window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}/rematch`), { status: 'declined', from: myRole });
 };
 
-// زرار العودة للقائمة الرئيسية من داخل نافذة الفوز
 if (victoryMenuBtn) {
     victoryMenuBtn.onclick = () => {
         playSound('click');
@@ -565,7 +630,7 @@ function listenToMatch(matchId) {
                 if (data.rematch.status === 'pending' && data.rematch.from !== myRole) {
                     rematchModal.style.display = 'flex';
                 } else if (data.rematch.status === 'declined' && data.rematch.from !== myRole) {
-                    alert('Opponent declined the rematch request.');
+                    showCustomAlert('Rematch Declined', 'Opponent declined the rematch request.');
                     resetBtn.textContent = 'Restart';
                     nextRoundBtn.textContent = 'Play Again';
                     window.dbUpdate(matchRef, { rematch: null }); 
@@ -592,8 +657,9 @@ function listenToMatch(matchId) {
                 updateStatus();
             }
         } else {
-            alert('The room has been closed by the opponent.');
-            leaveRoom();
+            showCustomAlert('Room Closed', 'The room has been closed by the opponent.', () => {
+                leaveRoom();
+            });
         }
     });
 }
@@ -624,11 +690,11 @@ document.querySelectorAll('.ai-diff-btn').forEach(btn => {
 homeBtn.addEventListener('click', () => { 
     playSound('click'); 
     if (gameMode === 'online-p2p' && currentMatchId) {
-        if (confirm('Going to menu will keep your room active. Leave room completely?')) {
+        showCustomConfirm('Return to Menu', 'Going to menu will keep your room active. Leave room completely?', () => {
             leaveRoom();
-        } else {
+        }, () => {
             mainMenu.style.display = 'flex';
-        }
+        });
     } else {
         mainMenu.style.display = 'flex'; 
     }

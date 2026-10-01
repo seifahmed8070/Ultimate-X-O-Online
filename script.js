@@ -174,12 +174,51 @@ if (closeStatsBtn) {
     closeStatsBtn.addEventListener('click', () => { playSound('click'); statsModal.style.display = 'none'; });
 }
 
+
+// --- الجزء الأهم: نظام الاتصال الذكي اللي بيعالج التقطيع والريفرش ---
+function setupPresence() {
+    if (!window.db) return;
+    const connectedRef = window.dbRef(window.db, ".info/connected");
+    window.dbOnValue(connectedRef, (snap) => {
+        if (snap.val() === true && playerName) {
+            // كل ما النت يشبك أو المتصفح يعمل ريفرش، بيرجع يسجلك أونلاين فوراً
+            registerOnlinePresence(gameMode === 'online-p2p' ? 'in-game' : 'online');
+        }
+    });
+}
+
+function registerOnlinePresence(status = 'online') {
+    if (!window.db || !playerName) return;
+    const userRef = window.dbRef(window.db, 'players/' + playerId);
+    
+    // تأكيد إنك هتمسح بياناتك لو قفلت الصفحة
+    window.dbOnDisconnect(userRef).remove().then(() => {
+        window.dbSet(userRef, { 
+            name: playerName, 
+            points: userArenaPoints, 
+            status: status, 
+            lastActive: Date.now() 
+        });
+    });
+
+    if (!activeChallengeRef) {
+        const challengeRef = window.dbRef(window.db, 'challenges/' + playerId);
+        activeChallengeRef = window.dbOnValue(challengeRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data && data.status === 'pending') {
+                showIncomingChallenge(data);
+            }
+        });
+    }
+}
+// ------------------------------------------------------------
+
+
 function checkPlayerName() {
-    if (!localStorage.getItem('ultimate_player_name')) {
+    if (!playerName) {
         nameModal.style.display = 'flex';
         mainMenu.style.display = 'flex';
     } else {
-        playerName = localStorage.getItem('ultimate_player_name');
         nameModal.style.display = 'none';
         menuUsername.textContent = playerName;
         userPoints.textContent = userArenaPoints;
@@ -211,32 +250,6 @@ saveNameBtn.addEventListener('click', () => {
         alert('Please enter your name!');
     }
 });
-
-function registerOnlinePresence(status = 'online') {
-    if (!window.db) return;
-    const userRef = window.dbRef(window.db, 'players/' + playerId);
-    window.dbSet(userRef, { 
-        name: playerName, 
-        points: userArenaPoints, 
-        status: status, 
-        lastActive: Date.now() 
-    });
-
-    if (window.dbOnDisconnect) {
-        window.dbOnDisconnect(userRef).remove();
-    }
-
-    if (activeChallengeRef) {
-        activeChallengeRef();
-    }
-    const challengeRef = window.dbRef(window.db, 'challenges/' + playerId);
-    activeChallengeRef = window.dbOnValue(challengeRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data && data.status === 'pending') {
-            showIncomingChallenge(data);
-        }
-    });
-}
 
 function fetchGlobalLeaderboard() {
     if (!window.db) return;
@@ -521,7 +534,6 @@ function listenToMatch(matchId) {
                 victoryModal.style.display = 'none';
             }
 
-            // مزامنة إظهار شاشة الفوز أو الخسارة عند الطرفين عبر الفايربيس
             if (data.winnerData) {
                 showEndModal(data.winnerData.winnerRole, data.winnerData.winnerName, data.winnerData.isCupWin);
             }
@@ -786,4 +798,16 @@ function updateStatus() {
 }
 
 resetBtn.addEventListener('click', () => { playSound('click'); requestRestart(); });
-checkPlayerName();
+
+// -- الدالة الأساسية لتشغيل اللعبة بعد التأكد من الفايربيس --
+function startApp() {
+    setupPresence();
+    checkPlayerName();
+}
+
+// حل مشكلة الريفرش والسباق مع الفايربيس
+if (window.db) {
+    startApp();
+} else {
+    window.addEventListener('firebase-ready', startApp);
+}

@@ -1,1511 +1,977 @@
-/*
- * ============================================================
- * Ultimate X/O - JavaScript
- * ============================================================
- *
- * تنظيم الملف:
- * - كل قسم قابل للطي والفتح من السهم في VS Code / Cursor.
- * - ابحث عن //#region لرؤية الأقسام الرئيسية.
- * - ابحث عن //#endregion لمعرفة نهاية كل قسم.
- *
- * ============================================================
- */
-
 (() => {
-'use strict';
+"use strict";
+
+//#region CONFIG
+const EMPTY_BOARD = Array(9).fill(null).map(() => Array(9).fill(""));
+const EMPTY_WINS = Array(9).fill("");
+const WIN_LINES = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
+
+const SESSION_KEY = "ultimate_xo_session";
+const VIEW_KEY = "ultimate_xo_view";
+const THEME_KEY = "ultimate_xo_theme";
+const DISCONNECT_SECONDS = 30;
 
 const $ = id => document.getElementById(id);
 
-
-//#region ======================================================
-// 01 - الإعدادات والثوابت وحالة اللعبة
-//#endregion ===================================================
-
-const EMPTY_BOARD = () =>
-  Array(9).fill(null).map(() => Array(9).fill(''));
-
-const EMPTY_WINS = () =>
-  Array(9).fill(null);
-
-const WIN_LINES = [
-  [0,1,2],
-  [3,4,5],
-  [6,7,8],
-  [0,3,6],
-  [1,4,7],
-  [2,5,8],
-  [0,4,8],
-  [2,4,6]
-];
-
-const SESSION_KEY = 'uxo_session_v3';
-const VIEW_KEY = 'uxo_view_v3';
-const THEME_KEY = 'uxo_theme_v3';
-const OFFLINE_KEY = 'uxo_offline_state_v3';
-const MATCH_KEY = 'uxo_match_v3';
-
-const DISCONNECT_SECONDS = 30;
-
-let player = {
-  id: null,
-  name: '',
-  pin: '',
-  points: 10,
-
-  stats: {
-    total: 0,
-    wins: 0,
-    losses: 0
-  },
-
-  theme:
-    localStorage.getItem(THEME_KEY) ||
-    'theme-cyberpunk'
-};
-
-let currentRoute =
-  localStorage.getItem(VIEW_KEY) ||
-  'home';
-
-let game = {
-  mode: null,
-  ai: null,
-
-  format: '1',
-  targetWins: 1,
-
-  role: 'X',
-
-  opponentId: null,
-  opponentName: 'Opponent',
-
-  matchId: null,
-
-  board: EMPTY_BOARD(),
-  wins: EMPTY_WINS(),
-
-  target: null,
-
-  turn: 'X',
-
-  scores: {
-    X: 0,
-    O: 0
-  },
-
-  status: 'idle',
-  winner: null,
-
-  lastMoveId: null
-};
-
-let listeners = {
-  presence: null,
-  lobby: null,
-  challenge: null,
-  match: null,
-  opponent: null
-};
-
-let timers = {
-  ai: null,
-  disconnect: null,
-  disconnectEndsAt: 0,
-  result: null
-};
-
-let challengeState = {
-  id: null,
-  matchId: null,
-  fromId: null,
-  fromName: null,
-  format: '1'
-};
-
-let outgoingChallenge = null;
-
-let resetHandledId = null;
-let rematchHandledId = null;
-let resultShownId = null;
-
-let sessionToken =
-  's_' +
-  Math.random()
-    .toString(36)
-    .slice(2, 10);
-
 let audio = null;
+let audioBusy = 0;
+let bgLast = 0;
+
+const game = {
+  mode:"offline",
+  ai:"easy",
+  format:"1",
+  target:1,
+  role:"X",
+  opponentId:"",
+  opponentName:"",
+  matchId:"",
+  board:cloneBoard(),
+  wins:[...EMPTY_WINS],
+  turn:"X",
+  scores:{X:0,O:0},
+  status:"playing",
+  winner:"",
+  lastMoveId:"",
+  phase:"playing"
+};
+
+let currentUser = null;
+let currentPage = "home";
+let authMode = "login";
+let challengeData = null;
+let listeners = [];
+let aiMoveTimer = null;
+let disconnectTimer = null;
+let resultShown = false;
+let settledResultId = "";
+//#endregion
 
 
-//#region ======================================================
-// 02 - أدوات Firebase والوظائف المساعدة العامة
-//#endregion ===================================================
-
-function dbReady() {
-  return !!window.db;
+//#region HELPERS
+function cloneBoard(){
+  return Array.from({length:9},()=>Array(9).fill(""));
 }
 
-function ref(path) {
-  return window.dbRef(window.db, path);
+function targetWins(format){
+  return format === "1"
+    ? 1
+    : format === "3"
+      ? 2
+      : format === "5"
+        ? 3
+        : Infinity;
 }
 
-function cloneBoard() {
-  return game.board.map(row => row.slice());
+function formatName(format){
+  if(format === "1") return "Single";
+  if(format === "3") return "Best of 3";
+  if(format === "5") return "Best of 5";
+  return "Endless";
 }
 
-function targetWins(format) {
-  if (format === '3') return 2;
-  if (format === '5') return 3;
-  return Infinity;
+function clone(obj){
+  return JSON.parse(JSON.stringify(obj));
 }
 
-function formatLabel(format) {
-  if (format === '3') return 'Best of 3';
-  if (format === '5') return 'Best of 5';
-  if (format === 'infinity') return 'Endless';
-
-  return 'Single';
+function sleep(ms){
+  return new Promise(resolve=>setTimeout(resolve,ms));
 }
 
-function routeHash(route) {
-  return '#' + route;
-}
+function playSound(type="click"){
+  try{
+    const now = performance.now();
 
-function safeName(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '')
-    .replace(/[^a-z0-9_\-؀-ي]/g, '')
-    .slice(0, 20);
-}
+    if(type === "click" && now - audioBusy < 45) return;
 
-function showToast(message, type = '') {
-  const el = document.createElement('div');
+    audioBusy = now;
 
-  el.className = 'toast ' + type;
-  el.textContent = message;
+    audio ||= new(window.AudioContext || window.webkitAudioContext)();
 
-  $('toastRoot').appendChild(el);
+    if(audio.state === "suspended") audio.resume();
 
-  setTimeout(() => {
-    el.remove();
-  }, 3500);
-}
+    const o = audio.createOscillator();
+    const g = audio.createGain();
+    const t = audio.currentTime;
 
-function notice(title, text, after) {
-  $('noticeTitle').textContent = title;
-  $('noticeText').textContent = text;
-
-  $('noticeOverlay').classList.remove('hidden');
-
-  $('noticeOk').onclick = () => {
-    $('noticeOverlay').classList.add('hidden');
-
-    if (after) {
-      after();
-    }
-  };
-}
-
-function playSound(type = 'click') {
-  try {
-    audio ||=
-      new (
-        window.AudioContext ||
-        window.webkitAudioContext
-      )();
-
-    if (audio.state === 'suspended') {
-      audio.resume();
-    }
-
-    const oscillator = audio.createOscillator();
-    const gain = audio.createGain();
-
-    oscillator.connect(gain);
-    gain.connect(audio.destination);
-
-    const now = audio.currentTime;
-
-    const map = {
-      click: [500, 700, 0.07],
-      start: [500, 950, 0.16],
-      win: [320, 720, 0.35],
-      lose: [280, 110, 0.30],
-      bell: [850, 1250, 0.25]
+    const sounds = {
+      click:[520,720,.055],
+      start:[520,900,.12],
+      win:[360,680,.24],
+      lose:[300,150,.22],
+      bell:[760,1080,.18]
     };
 
-    const [startFrequency, endFrequency, duration] =
-      map[type] || map.click;
+    const v = sounds[type] || sounds.click;
 
-    oscillator.type =
-      type === 'lose'
-        ? 'sawtooth'
-        : 'sine';
+    o.connect(g);
+    g.connect(audio.destination);
 
-    oscillator.frequency.setValueAtTime(
-      startFrequency,
-      now
-    );
+    o.type = "triangle";
 
-    oscillator.frequency.exponentialRampToValueAtTime(
-      endFrequency,
-      now + duration
-    );
+    o.frequency.setValueAtTime(v[0],t);
+    o.frequency.exponentialRampToValueAtTime(v[1],t + v[2]);
 
-    gain.gain.setValueAtTime(
-      0.11,
-      now
-    );
+    g.gain.setValueAtTime(.045,t);
+    g.gain.exponentialRampToValueAtTime(.005,t + v[2]);
 
-    gain.gain.exponentialRampToValueAtTime(
-      0.01,
-      now + duration
-    );
-
-    oscillator.start(now);
-    oscillator.stop(now + duration);
-
-  } catch {}
+    o.start(t);
+    o.stop(t + v[2]);
+  }catch{}
 }
 
+function showToast(message,type=""){
+  const root = $("toastRoot");
+  if(!root) return;
 
-//#region ======================================================
-// 03 - الثيم والحفظ والتنقل بين الصفحات
-//#endregion ===================================================
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  el.textContent = message;
 
-function setTheme(theme) {
-  player.theme = theme;
+  root.appendChild(el);
 
-  document.documentElement.className = theme;
-
-  localStorage.setItem(
-    THEME_KEY,
-    theme
-  );
-
-  if (player.id && dbReady()) {
-    window.dbUpdate(
-      ref('players/' + player.id),
-      {
-        theme
-      }
-    );
-  }
+  setTimeout(()=>{
+    el.style.opacity = "0";
+    el.style.transform = "translateY(5px)";
+    setTimeout(()=>el.remove(),180);
+  },2200);
 }
 
-function persistSession() {
-  if (!player.id) return;
+function showNotice(title,text){
+  $("noticeTitle").textContent = title;
+  $("noticeText").textContent = text;
+  openOverlay("noticeOverlay");
+}
+
+function openOverlay(id){
+  const el = $(id);
+  if(el) el.classList.remove("hidden");
+}
+
+function closeOverlay(id){
+  const el = $(id);
+  if(el) el.classList.add("hidden");
+}
+
+function deepEqual(a,b){
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+//#endregion
+
+
+//#region STORAGE
+function saveSession(){
+  if(!currentUser) return;
 
   localStorage.setItem(
     SESSION_KEY,
     JSON.stringify({
-      id: player.id,
-      name: player.name,
-      token: sessionToken
+      id:currentUser.id,
+      name:currentUser.name
     })
   );
 }
 
-function clearSession() {
+function loadSession(){
+  try{
+    return JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+  }catch{
+    return null;
+  }
+}
+
+function saveView(view){
+  localStorage.setItem(VIEW_KEY,view);
+}
+
+function loadView(){
+  return localStorage.getItem(VIEW_KEY) || "home";
+}
+
+function saveTheme(theme){
+  localStorage.setItem(THEME_KEY,theme);
+}
+
+function loadTheme(){
+  return localStorage.getItem(THEME_KEY) || "theme-cyberpunk";
+}
+//#endregion
+
+
+//#region THEME
+function applyTheme(theme){
+  const root = $("htmlRoot");
+
+  if(root){
+    root.className = theme;
+  }
+
+  saveTheme(theme);
+}
+//#endregion
+
+
+//#region AUTH
+function setAuthMode(mode){
+  authMode = mode;
+
+  $("authTitle").textContent =
+    mode === "login" ? "تسجيل الدخول" : "إنشاء حساب";
+
+  $("authHint").textContent =
+    mode === "login"
+      ? "ادخل باسم اللاعب ورقم الـPIN الخاص بك."
+      : "أنشئ اسم لاعب ورقم PIN من 4 أرقام.";
+
+  $("authSubmit").textContent =
+    mode === "login" ? "دخول" : "إنشاء الحساب";
+
+  $("authSwitch").textContent =
+    mode === "login"
+      ? "ليس لديك حساب؟ إنشاء حساب"
+      : "لديك حساب؟ تسجيل الدخول";
+}
+
+async function authSubmit(e){
+  e.preventDefault();
+
+  const name = $("authName").value.trim();
+  const pin = $("authPin").value.trim();
+
+  if(name.length < 2){
+    showToast("اكتب اسمًا من حرفين على الأقل","bad");
+    return;
+  }
+
+  if(!/^\d{4}$/.test(pin)){
+    showToast("الـPIN يجب أن يكون 4 أرقام","bad");
+    return;
+  }
+
+  const id = name.toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]/gi,"").slice(0,20);
+
+  if(!id){
+    showToast("اسم اللاعب غير صالح","bad");
+    return;
+  }
+
+  try{
+    const userRef = dbRef(db,`players/${id}`);
+    const snap = await dbGet(userRef);
+    const existing = snap.exists() ? snap.val() : null;
+
+    if(authMode === "login"){
+      if(!existing){
+        showToast("الحساب غير موجود","bad");
+        return;
+      }
+
+      if(existing.pin !== pin){
+        showToast("الـPIN غير صحيح","bad");
+        return;
+      }
+
+      currentUser = {
+        id,
+        name:existing.name,
+        pin,
+        points:Number(existing.points ?? 10),
+        total:Number(existing.total ?? 0),
+        wins:Number(existing.wins ?? 0),
+        losses:Number(existing.losses ?? 0),
+        draws:Number(existing.draws ?? 0)
+      };
+    }else{
+      if(existing){
+        showToast("اسم اللاعب مستخدم بالفعل","bad");
+        return;
+      }
+
+      currentUser = {
+        id,
+        name,
+        pin,
+        points:10,
+        total:0,
+        wins:0,
+        losses:0,
+        draws:0
+      };
+
+      await dbSet(userRef,{
+        ...currentUser,
+        status:"offline",
+        updatedAt:Date.now()
+      });
+    }
+
+    saveSession();
+    await registerPresence();
+
+    $("authScreen").classList.add("hidden");
+    $("app").classList.remove("hidden");
+
+    updateHeader();
+    navigate(loadView());
+
+    showToast(
+      authMode === "login" ? "تم تسجيل الدخول" : "تم إنشاء الحساب",
+      "good"
+    );
+
+  }catch(err){
+    console.error(err);
+    showToast("حصل خطأ في الاتصال بالسيرفر","bad");
+  }
+}
+
+async function restoreSession(){
+  const session = loadSession();
+
+  if(!session) return false;
+
+  try{
+    const snap = await dbGet(dbRef(db,`players/${session.id}`));
+
+    if(!snap.exists()) return false;
+
+    const u = snap.val();
+
+    currentUser = {
+      id:session.id,
+      name:u.name,
+      pin:u.pin,
+      points:Number(u.points ?? 10),
+      total:Number(u.total ?? 0),
+      wins:Number(u.wins ?? 0),
+      losses:Number(u.losses ?? 0),
+      draws:Number(u.draws ?? 0)
+    };
+
+    $("authScreen").classList.add("hidden");
+    $("app").classList.remove("hidden");
+
+    await registerPresence();
+
+    updateHeader();
+    navigate(loadView());
+
+    return true;
+
+  }catch{
+    return false;
+  }
+}
+
+async function logout(){
+  try{
+    await dbUpdate(dbRef(db,`players/${currentUser.id}`),{
+      status:"offline",
+      updatedAt:Date.now()
+    });
+  }catch{}
+
   localStorage.removeItem(SESSION_KEY);
+  location.reload();
 }
 
-function saveView() {
-  localStorage.setItem(
-    VIEW_KEY,
-    currentRoute
+async function deleteAccount(){
+  if(!currentUser) return;
+
+  const ok = confirm("هل تريد حذف الحساب نهائيًا؟");
+  if(!ok) return;
+
+  try{
+    await dbRemove(dbRef(db,`players/${currentUser.id}`));
+    localStorage.removeItem(SESSION_KEY);
+    location.reload();
+  }catch{
+    showToast("تعذر حذف الحساب","bad");
+  }
+}
+//#endregion
+
+
+//#region PRESENCE
+async function registerPresence(){
+  if(!currentUser) return;
+
+  const refUser = dbRef(db,`players/${currentUser.id}`);
+
+  await dbUpdate(refUser,{
+    name:currentUser.name,
+    points:Number(currentUser.points ?? 10),
+    total:Number(currentUser.total ?? 0),
+    wins:Number(currentUser.wins ?? 0),
+    losses:Number(currentUser.losses ?? 0),
+    draws:Number(currentUser.draws ?? 0),
+    status:"online",
+    updatedAt:Date.now()
+  });
+
+  try{
+    await dbOnDisconnect(refUser).update({
+      status:"offline",
+      updatedAt:Date.now()
+    });
+  }catch{}
+}
+
+async function savePlayerStats(){
+  if(!currentUser) return;
+
+  await dbUpdate(
+    dbRef(db,`players/${currentUser.id}`),
+    {
+      name:currentUser.name,
+      points:Number(currentUser.points || 0),
+      total:Number(currentUser.total || 0),
+      wins:Number(currentUser.wins || 0),
+      losses:Number(currentUser.losses || 0),
+      draws:Number(currentUser.draws || 0),
+      status:"online",
+      updatedAt:Date.now()
+    }
   );
-}
 
-function saveMatchSession() {
-  if (
-    game.matchId &&
-    game.mode === 'online'
-  ) {
-    localStorage.setItem(
-      MATCH_KEY,
-      JSON.stringify({
-        matchId: game.matchId,
-        role: game.role,
-        opponentId: game.opponentId,
-        opponentName: game.opponentName,
-        format: game.format
-      })
-    );
-  } else {
-    localStorage.removeItem(MATCH_KEY);
-  }
-}
-
-function clearMatchSession() {
-  localStorage.removeItem(MATCH_KEY);
-}
-
-function navigate(route) {
-  if (
-    game.matchId &&
-    route !== 'play' &&
-    route !== 'online' &&
-    route !== 'home' &&
-    route !== 'leaderboard' &&
-    route !== 'profile' &&
-    route !== 'rules'
-  ) {
-    return;
-  }
-
-  currentRoute = route;
-
-  saveView();
-
-  location.hash = routeHash(route);
-
-  renderPage();
-
-  $('mobileNav').classList.remove('open');
-}
-
-
-//#region ======================================================
-// 04 - الصفحات والواجهة الرئيسية وربط الأزرار
-//#endregion ===================================================
-
-function renderPage() {
-  if (
-    game.matchId &&
-    game.status === 'playing'
-  ) {
-    $('app').classList.add('hidden');
-    $('gameScreen').classList.remove('hidden');
-
-    return;
-  }
-
-  $('gameScreen').classList.add('hidden');
-  $('app').classList.remove('hidden');
-
-  const page = $('page');
-
-  const tpl =
-    document.getElementById(
-      currentRoute + 'Template'
-    );
-
-  page.innerHTML = '';
-
-  if (tpl) {
-    page.appendChild(
-      tpl.content.cloneNode(true)
-    );
-  } else {
-    currentRoute = 'home';
-
-    saveView();
-
-    page.appendChild(
-      $('homeTemplate').content.cloneNode(true)
-    );
-  }
-
-  bindPage();
   updateHeader();
 }
-
-function bindPage() {
-  document
-    .querySelectorAll('[data-route]')
-    .forEach(button => {
-      button.addEventListener(
-        'click',
-        () => {
-          playSound();
-          navigate(button.dataset.route);
-        }
-      );
-    });
-
-  if (currentRoute === 'home') {
-    buildMiniGrid();
-  }
-
-  if (currentRoute === 'play') {
-    bindPlay();
-  }
-
-  if (currentRoute === 'online') {
-    bindOnline();
-  }
-
-  if (currentRoute === 'leaderboard') {
-    loadLeaderboard();
-  }
-
-  if (currentRoute === 'profile') {
-    bindProfile();
-  }
-}
-
-function updateHeader() {
-  $('topUserName').textContent =
-    player.name || 'Player';
-
-  $('topPoints').textContent =
-    (player.points || 0) + ' pts';
-}
-
-function buildMiniGrid() {
-  const miniGrid = $('miniGrid');
-
-  if (!miniGrid) return;
-
-  const marks = [
-    'X', '', 'O',
-    '', 'X', '',
-    'O', '', 'X'
-  ];
-
-  miniGrid.innerHTML =
-    marks
-      .map(mark => `<div>${mark}</div>`)
-      .join('');
-}
+//#endregion
 
 
-//#region ======================================================
-// 05 - الوضع المحلي Offline وبداية المباراة
-//#endregion ===================================================
+//#region NAVIGATION
+function navigate(page){
+  if(!currentUser) return;
 
-function bindPlay() {
-  document
-    .querySelectorAll('[data-ai]')
-    .forEach(button => {
-      button.addEventListener(
-        'click',
-        () => {
-          startOffline(
-            button.dataset.ai,
-            $('offlineFormat').value
-          );
-        }
-      );
-    });
-}
+  currentPage = page;
+  saveView(page);
 
-function startOffline(ai, format) {
-  playSound('start');
+  renderPage(page);
+  updateHeader();
 
-  game = {
-    ...game,
-
-    mode: 'offline',
-
-    ai,
-
-    format,
-
-    targetWins: targetWins(format),
-
-    role: 'X',
-
-    opponentId: null,
-
-    opponentName:
-      'AI ' + ai,
-
-    matchId: null,
-
-    board: EMPTY_BOARD(),
-
-    wins: EMPTY_WINS(),
-
-    target: null,
-
-    turn: 'X',
-
-    scores: {
-      X: 0,
-      O: 0
-    },
-
-    status: 'playing',
-
-    winner: null,
-
-    lastMoveId: null
-  };
-
-  localStorage.setItem(
-    OFFLINE_KEY,
-    JSON.stringify({
-      ai,
-      format
-    })
-  );
-
-  openGame();
-}
-
-
-//#region ======================================================
-// 06 - الوضع Online واللوبي والتحديات
-//#endregion ===================================================
-
-function bindOnline() {
-  $('refreshPlayers').onclick = () => {
-    playSound();
+  if(page === "online"){
     refreshLobby();
-  };
-
-  refreshLobby();
+    watchChallenges();
+  }
 }
 
-function refreshLobby() {
-  if (
-    !dbReady() ||
-    !player.id
-  ) {
-    $('playersList').innerHTML =
-      '<p class="hint">قاعدة البيانات غير متاحة.</p>';
+function renderPage(page){
+  const template = $(`${page}Template`);
 
-    return;
+  if(!template){
+    page = "home";
   }
 
-  if (listeners.lobby) {
-    listeners.lobby();
+  const finalTemplate = $(`${page}Template`);
+
+  $("page").innerHTML = finalTemplate.innerHTML;
+
+  bindPage(page);
+
+  if(page === "home") buildMiniGrid();
+  if(page === "leaderboard") loadLeaderboard();
+  if(page === "profile") renderProfile();
+
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+function bindPage(page){
+  document.querySelectorAll("[data-route]").forEach(btn=>{
+    btn.onclick = ()=>navigate(btn.dataset.route);
+  });
+
+  if(page === "play"){
+    document.querySelectorAll("[data-ai]").forEach(btn=>{
+      btn.onclick = ()=>{
+        const format = $("offlineFormat").value;
+        startOffline(btn.dataset.ai,format);
+      };
+    });
   }
 
-  listeners.lobby =
-    window.dbOnValue(
-      ref('players'),
-      snapshot => {
-        const data =
-          snapshot.val() || {};
+  if(page === "online"){
+    $("refreshPlayers")?.addEventListener("click",refreshLobby);
+  }
 
-        const players =
-          Object.entries(data)
-            .filter(
-              ([id, user]) =>
-                id !== player.id &&
-                user &&
-                user.status === 'online'
-            )
-            .sort(
-              (a, b) =>
-                (a[1].name || '')
-                  .localeCompare(
-                    b[1].name || ''
-                  )
-            );
+  if(page === "profile"){
+    $("themeSelect").value = loadTheme();
 
-        $('onlineCount').textContent =
-          players.length;
+    $("themeSelect").addEventListener("change",e=>{
+      applyTheme(e.target.value);
+    });
 
-        $('playersList').innerHTML =
-          players.length
-            ? ''
-            : '<p class="hint">لا يوجد لاعب متاح الآن. اضغط تحديث بعد دخول لاعب آخر.</p>';
+    $("logoutBtn").addEventListener("click",logout);
+    $("deleteBtn").addEventListener("click",deleteAccount);
+  }
+}
 
-        players.forEach(
-          ([id, user]) => {
-            const row =
-              document.createElement('div');
+function updateHeader(){
+  if(!currentUser) return;
 
-            row.className =
-              'player-row';
+  $("topUserName").textContent = currentUser.name;
+  $("topPoints").textContent = `${currentUser.points ?? 0} pts`;
+}
 
-            row.innerHTML = `
-              <div>
-                <strong>
-                  🟢 ${escapeHtml(user.name || 'Player')}
-                </strong>
+function renderProfile(){
+  if(!currentUser) return;
 
-                <small>
-                  ${user.points || 0} pts
-                </small>
-              </div>
+  $("profileName").textContent = currentUser.name;
+  $("profileAvatar").textContent =
+    currentUser.name.charAt(0).toUpperCase();
 
-              <button class="primary-btn">
-                Challenge
-              </button>
-            `;
+  $("profilePoints").textContent = currentUser.points ?? 0;
+  $("profileTotal").textContent = currentUser.total ?? 0;
+  $("profileWins").textContent = currentUser.wins ?? 0;
+  $("profileLosses").textContent = currentUser.losses ?? 0;
+}
 
-            row
-              .querySelector('button')
-              .onclick = () =>
-                sendChallenge(
-                  id,
-                  user.name
-                );
+function buildMiniGrid(){
+  const el = $("miniGrid");
+  if(!el) return;
 
-            $('playersList')
-              .appendChild(row);
-          }
-        );
+  const chars = ["X","","O","","X","","O","",""];
+
+  el.innerHTML = chars.map(x=>`<div>${x}</div>`).join("");
+}
+
+function toggleMobileMenu(){
+  $("mobileNav")?.classList.toggle("open");
+}
+//#endregion
+
+
+//#region LEADERBOARD
+function loadLeaderboard(){
+  dbOnValue(
+    dbRef(db,"players"),
+    snap=>{
+      const rows = [];
+
+      snap.forEach(child=>{
+        const p = child.val();
+
+        rows.push({
+          name:p.name || child.key,
+          points:Number(p.points || 0),
+          wins:Number(p.wins || 0)
+        });
+      });
+
+      rows.sort((a,b)=>{
+        if(b.points !== a.points) return b.points - a.points;
+        return b.wins - a.wins;
+      });
+
+      const target = $("leaderboardRows");
+      if(!target) return;
+
+      target.innerHTML = rows.slice(0,50).map((p,i)=>`
+        <div class="rank-row">
+          <span>${i+1}</span>
+          <span>${escapeHtml(p.name)}</span>
+          <span>${p.points}</span>
+          <span>${p.wins}</span>
+        </div>
+      `).join("");
+
+      if(!rows.length){
+        target.innerHTML =
+          `<div class="rank-row"><span>—</span><span>لا يوجد لاعبين</span><span>0</span><span>0</span></div>`;
       }
-    );
+    }
+  );
+}
+//#endregion
+
+
+//#region ONLINE LOBBY
+function refreshLobby(){
+  if(!currentUser || currentPage !== "online") return;
+
+  dbGet(dbRef(db,"players"))
+    .then(snap=>{
+      const players = [];
+
+      snap.forEach(child=>{
+        if(child.key === currentUser.id) return;
+
+        const p = child.val();
+
+        if(p.status === "online"){
+          players.push({
+            id:child.key,
+            name:p.name || child.key,
+            points:Number(p.points || 0)
+          });
+        }
+      });
+
+      const list = $("playersList");
+      const count = $("onlineCount");
+
+      if(count) count.textContent = players.length;
+
+      if(!list) return;
+
+      if(!players.length){
+        list.innerHTML = `
+          <div class="player-row">
+            <div>
+              <strong>لا يوجد لاعبين الآن</strong>
+              <small>اضغط تحديث بعد قليل.</small>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      list.innerHTML = players.map(p=>`
+        <div class="player-row">
+          <div>
+            <strong>${escapeHtml(p.name)}</strong>
+            <small>${p.points} pts • Online</small>
+          </div>
+          <button class="primary-btn challenge-btn"
+                  data-player="${p.id}"
+                  data-name="${escapeAttr(p.name)}">
+            تحدي
+          </button>
+        </div>
+      `).join("");
+
+      list.querySelectorAll(".challenge-btn").forEach(btn=>{
+        btn.onclick = ()=>{
+          sendChallenge(
+            btn.dataset.player,
+            btn.dataset.name,
+            $("onlineFormat")?.value || "1"
+          );
+        };
+      });
+
+    })
+    .catch(()=>{
+      showToast("تعذر تحميل اللاعبين","bad");
+    });
 }
 
-function escapeHtml(value) {
-  return String(value).replace(
-    /[&<>'"]/g,
-    character => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      "'": '&#39;',
-      '"': '&quot;'
-    }[character])
+function watchChallenges(){
+  if(!currentUser) return;
+
+  dbOnValue(
+    dbRef(db,`challenges/${currentUser.id}`),
+    snap=>{
+      if(!snap.exists()) return;
+
+      const data = snap.val();
+
+      if(data.status === "pending"){
+        challengeData = data;
+
+        $("challengeTitle").textContent =
+          `تحدي من ${data.fromName || "لاعب"}`;
+
+        $("challengeText").textContent =
+          `${data.fromName || "لاعب"} يريد اللعب بنظام ${formatName(data.format)}`;
+
+        openOverlay("challengeOverlay");
+      }
+    }
   );
 }
 
-async function sendChallenge(
-  targetId,
-  targetName
-) {
-  if (
-    !dbReady() ||
-    !player.id
-  ) {
-    return;
-  }
+async function sendChallenge(playerId,playerName,format){
+  if(!currentUser || !playerId) return;
 
-  const format =
-    $('onlineFormat').value;
+  try{
+    const matchId = dbPush(dbRef(db,"matches")).key;
 
-  const matchId =
-    window.dbPush(
-      ref('matches')
-    ).key;
+    const challenge = {
+      id:matchId,
+      from:currentUser.id,
+      fromName:currentUser.name,
+      to:playerId,
+      toName:playerName,
+      format,
+      target:targetWins(format),
+      status:"pending",
+      createdAt:Date.now()
+    };
 
-  outgoingChallenge = {
-    targetId,
-    matchId
-  };
-
-  game = {
-    ...game,
-
-    matchId,
-
-    mode: 'online',
-
-    role: 'X',
-
-    opponentId: targetId,
-
-    opponentName: targetName,
-
-    format,
-
-    targetWins:
-      targetWins(format),
-
-    status: 'waiting'
-  };
-
-  saveMatchSession();
-
-  const match = {
-    version: 1,
-
-    status: 'waiting',
-
-    format,
-
-    createdAt: Date.now(),
-
-    updatedAt: Date.now(),
-
-    players: {
-      X: player.id,
-      O: targetId
-    },
-
-    playerNames: {
-      X: player.name,
-      O: targetName
-    },
-
-    board: EMPTY_BOARD(),
-
-    wins: EMPTY_WINS(),
-
-    turn: 'X',
-
-    scores: {
-      X: 0,
-      O: 0
-    },
-
-    phase: 'waiting',
-
-    request: null,
-
-    rematch: null,
-
-    result: null,
-
-    closed: false
-  };
-
-  try {
-    await window.dbSet(
-      ref('matches/' + matchId),
-      match
+    await dbSet(
+      dbRef(db,`challenges/${playerId}`),
+      challenge
     );
 
-    await window.dbSet(
-      ref(
-        'challenges/' + targetId
-      ),
+    showToast(`تم إرسال التحدي إلى ${playerName}`,"good");
+
+  }catch(err){
+    console.error(err);
+    showToast("تعذر إرسال التحدي","bad");
+  }
+}
+
+async function acceptChallenge(){
+  if(!challengeData) return;
+
+  const data = challengeData;
+
+  try{
+    const match = {
+      id:data.id,
+      playerX:data.from,
+      playerXName:data.fromName,
+      playerO:currentUser.id,
+      playerOName:currentUser.name,
+      format:data.format,
+      target:data.target,
+      board:cloneBoard(),
+      wins:[...EMPTY_WINS],
+      turn:"X",
+      scores:{X:0,O:0},
+      status:"playing",
+      phase:"playing",
+      version:0,
+      lastMoveId:"",
+      createdAt:Date.now(),
+      updatedAt:Date.now()
+    };
+
+    await dbSet(dbRef(db,`matches/${data.id}`),match);
+
+    await dbUpdate(
+      dbRef(db,`challenges/${currentUser.id}`),
+      {status:"accepted",matchId:data.id}
+    );
+
+    closeOverlay("challengeOverlay");
+
+    openOnlineMatch(
+      data.id,
+      "O",
+      data.from,
+      data.fromName,
+      data.format
+    );
+
+  }catch(err){
+    console.error(err);
+    showToast("تعذر قبول التحدي","bad");
+  }
+}
+
+async function declineChallenge(){
+  if(!challengeData) return;
+
+  try{
+    await dbUpdate(
+      dbRef(db,`challenges/${currentUser.id}`),
       {
-        status: 'pending',
-        matchId,
-        fromId: player.id,
-        fromName: player.name,
-        format,
-        createdAt: Date.now()
+        status:"declined",
+        updatedAt:Date.now()
       }
     );
+  }catch{}
 
-    showToast(
-      `تم إرسال تحدي إلى ${targetName}`,
-      'good'
-    );
+  challengeData = null;
+  closeOverlay("challengeOverlay");
+}
+//#endregion
 
-    watchMatch(matchId);
 
-  } catch (error) {
-    showToast(
-      'تعذر إرسال التحدي',
-      'bad'
-    );
+//#region OFFLINE GAME
+function startOffline(ai,format){
+  game.mode = "offline";
+  game.ai = ai;
+  game.format = format;
+  game.target = targetWins(format);
+  game.role = "X";
+  game.opponentId = "AI";
+  game.opponentName = ai === "impossible"
+    ? "Grandmaster AI"
+    : `${ai.toUpperCase()} AI`;
+  game.matchId = "";
+  game.scores = {X:0,O:0};
 
-    game.matchId = null;
-  }
+  resetRoundLocal();
+
+  showGameScreen();
+
+  playSound("start");
 }
 
-function watchChallenge() {
-  if (
-    !dbReady() ||
-    !player.id
-  ) {
-    return;
-  }
-
-  if (listeners.challenge) {
-    listeners.challenge();
-  }
-
-  listeners.challenge =
-    window.dbOnValue(
-      ref(
-        'challenges/' +
-        player.id
-      ),
-      snapshot => {
-        const data =
-          snapshot.val();
-
-        if (
-          data &&
-          data.status === 'pending' &&
-          data.matchId
-        ) {
-          challengeState = {
-            id: player.id,
-            matchId: data.matchId,
-            fromId: data.fromId,
-            fromName: data.fromName,
-            format: data.format || '1'
-          };
-
-          $('challengeTitle')
-            .textContent =
-            `تحدي من ${data.fromName}`;
-
-          $('challengeText')
-            .textContent =
-            `طلب مباراة ${formatLabel(data.format || '1')}. المود المحدد من الطرف الآخر: Ultimate X/O Online.`;
-
-          $('challengeOverlay')
-            .classList
-            .remove('hidden');
-        }
-      }
-    );
-}
-
-async function acceptChallenge() {
-  const challenge =
-    challengeState;
-
-  if (!challenge.matchId) {
-    return;
-  }
-
-  playSound('start');
-
-  $('challengeOverlay')
-    .classList
-    .add('hidden');
-
-  game = {
-    ...game,
-
-    matchId:
-      challenge.matchId,
-
-    mode: 'online',
-
-    role: 'O',
-
-    opponentId:
-      challenge.fromId,
-
-    opponentName:
-      challenge.fromName,
-
-    format:
-      challenge.format,
-
-    targetWins:
-      targetWins(
-        challenge.format
-      ),
-
-    status: 'playing'
-  };
-
-  saveMatchSession();
-
-  await window.dbUpdate(
-    ref(
-      'matches/' +
-      challenge.matchId
-    ),
-    {
-      status: 'playing',
-      phase: 'active',
-      updatedAt: Date.now(),
-      acceptedAt: Date.now()
-    }
-  );
-
-  await window.dbRemove(
-    ref(
-      'challenges/' +
-      player.id
-    )
-  );
-
-  watchMatch(
-    challenge.matchId
-  );
-}
-
-async function declineChallenge() {
-  if (challengeState.matchId) {
-    await window.dbUpdate(
-      ref(
-        'matches/' +
-        challengeState.matchId
-      ),
-      {
-        status: 'closed',
-        closed: true,
-        closedReason: 'declined',
-        updatedAt: Date.now()
-      }
-    );
-  }
-
-  await window.dbRemove(
-    ref(
-      'challenges/' +
-      player.id
-    )
-  );
-
-  $('challengeOverlay')
-    .classList
-    .add('hidden');
-
-  playSound();
-}
-
-function watchMatch(matchId) {
-  if (listeners.match) {
-    listeners.match();
-  }
-
-  listeners.match =
-    window.dbOnValue(
-      ref(
-        'matches/' +
-        matchId
-      ),
-      snapshot => {
-        const data =
-          snapshot.val();
-
-        if (!data) {
-          handleRemoteClose();
-          return;
-        }
-
-        game.format =
-          data.format ||
-          game.format;
-
-        game.targetWins =
-          targetWins(
-            game.format
-          );
-
-        game.status =
-          data.status ||
-          game.status;
-
-        game.target =
-          data.target === null ||
-          typeof data.target === 'number'
-            ? data.target
-            : null;
-
-        game.board =
-          normalizeBoard(
-            data.board
-          );
-
-        game.wins =
-          Array.isArray(data.wins)
-            ? data.wins.slice(0, 9)
-            : EMPTY_WINS();
-
-        game.turn =
-          data.turn || 'X';
-
-        game.scores =
-          data.scores || {
-            X: 0,
-            O: 0
-          };
-
-        game.opponentName =
-          game.role === 'X'
-            ? (
-                data.playerNames?.O ||
-                game.opponentName
-              )
-            : (
-                data.playerNames?.X ||
-                game.opponentName
-              );
-
-        if (data.status === 'waiting') {
-          game.status = 'waiting';
-          return;
-        }
-
-        if (
-          data.closed ||
-          data.status === 'closed'
-        ) {
-          closeGameUI(
-            'تم إنهاء المباراة من الطرف الآخر.'
-          );
-
-          return;
-        }
-
-        if (
-          data.status === 'playing'
-        ) {
-          game.status = 'playing';
-
-          saveMatchSession();
-
-          registerPresence('in-game');
-
-          renderGame();
-
-          handleConnectionFromMatch(data);
-
-          handleResetState(data);
-
-          handleRematchState(data);
-
-          if (data.result) {
-            showResultOnce(
-              data.result,
-              data.result.id
-            );
-          }
-        }
-      }
-    );
-}
-
-
-//#region ======================================================
-// 07 - مزامنة المباراة Online وإغلاق الغرفة
-//#endregion ===================================================
-
-function normalizeBoard(board) {
-  return (
-    Array.isArray(board) &&
-    board.length === 9
-  )
-    ? board.map(row =>
-        Array.isArray(row) &&
-        row.length === 9
-          ? row.map(value => value || '')
-          : Array(9).fill('')
-      )
-    : EMPTY_BOARD();
-}
-
-function handleRemoteClose() {
-  if (game.matchId) {
-    closeGameUI(
-      'انتهت الغرفة أو تم إغلاقها.'
-    );
-  }
-}
-
-function closeGameUI(message) {
-  stopDisconnect();
-
-  clearMatchSession();
-
-  game.matchId = null;
-  game.status = 'idle';
-
-  cleanupMatchListener();
-
-  registerPresence('online');
-
-  $('gameScreen')
-    .classList
-    .add('hidden');
-
-  $('app')
-    .classList
-    .remove('hidden');
-
-  navigate('online');
-
-  if (message) {
-    notice(
-      'Match Closed',
-      message
-    );
-  }
-}
-
-function cleanupMatchListener() {
-  if (listeners.match) {
-    listeners.match();
-    listeners.match = null;
-  }
-
-  if (listeners.opponent) {
-    listeners.opponent();
-    listeners.opponent = null;
-  }
-}
-
-
-//#region ======================================================
-// 08 - رسم لوحة Ultimate X/O وحركات اللاعبين
-//#endregion ===================================================
-
-function renderGame() {
-  $('app')
-    .classList
-    .add('hidden');
-
-  $('gameScreen')
-    .classList
-    .remove('hidden');
-
-  $('gameOpponent')
-    .textContent =
-    'vs ' + game.opponentName;
-
-  $('gameTitle')
-    .textContent =
-    game.mode === 'offline'
-      ? `AI • ${game.ai}`
-      : `Online • ${formatLabel(game.format)}`;
-
-  $('scoreX')
-    .textContent =
-    game.scores.X;
-
-  $('scoreO')
-    .textContent =
-    game.scores.O;
-
-  $('turnText')
-    .textContent =
-    game.turn;
-
-  const board =
-    $('ultimateBoard');
-
-  board.innerHTML = '';
-
-  for (let b = 0; b < 9; b++) {
-    const local =
-      document.createElement('div');
-
-    const open =
-      game.wins[b] === null;
-
-    const active =
-      game.target === null ||
-      game.target === b;
-
-    local.className =
-      'local-board ' +
-      (
-        open && active
-          ? 'active'
-          : ''
-      ) +
-      (
-        !open
-          ? ' locked'
-          : ''
-      );
-
-    if (!open) {
-      const overlay =
-        document.createElement('div');
-
-      overlay.className =
-        'local-overlay';
-
-      overlay.textContent =
-        game.wins[b] === 'DRAW'
-          ? '='
-          : game.wins[b];
-
-      local.appendChild(
-        overlay
-      );
-    }
-
-    for (let c = 0; c < 9; c++) {
-      const button =
-        document.createElement('button');
-
-      const value =
-        game.board[b][c];
-
-      button.className =
-        'cell ' +
-        (
-          value === 'X'
-            ? 'x'
-            : value === 'O'
-              ? 'o'
-              : ''
-        );
-
-      button.textContent =
-        value;
-
-      button.disabled =
-        !!value ||
-        !open ||
-        !active ||
-        game.status !== 'playing' ||
-        game.turn !== game.role;
-
-      if (!button.disabled) {
-        button.onclick = () =>
-          makeMove(b, c);
-      }
-
-      local.appendChild(
-        button
-      );
-    }
-
-    board.appendChild(
-      local
-    );
-  }
-}
-
-function openGame() {
-  $('app')
-    .classList
-    .add('hidden');
-
-  $('gameScreen')
-    .classList
-    .remove('hidden');
-
-  registerPresence(
-    game.mode === 'online'
-      ? 'in-game'
-      : 'online'
-  );
-
-  renderGame();
-}
-
-function validMove(b, c) {
-  return (
-    game.status === 'playing' &&
-    game.wins[b] === null &&
-    (
-      game.target === null ||
-      game.target === b
-    ) &&
-    !game.board[b][c] &&
-    game.turn === game.role
-  );
-}
-
-function makeMove(b, c) {
-  if (!validMove(b, c)) {
-    return;
-  }
-
-  playSound();
-
-  applyMove(
-    b,
-    c,
-    game.role
-  );
-}
-
-function applyMove(b, c, mark) {
-  game.board[b][c] = mark;
-
-  if (
-    checkSmallWin(
-      game.board[b]
-    )
-  ) {
-    game.wins[b] = mark;
-
-  } else if (
-    game.board[b].every(Boolean)
-  ) {
-    game.wins[b] = 'DRAW';
-  }
-
-  const winner =
-    checkUltimateWin(
-      game.wins
-    );
-
-  const draw =
-    !winner &&
-    game.wins.every(
-      value => value !== null
-    );
-
-  if (winner || draw) {
-    game.winner =
-      winner || 'DRAW';
-
-    finishRound(
-      game.winner
-    );
-
-    return;
-  }
-
-  game.target =
-    game.wins[c] !== null
-      ? null
-      : c;
-
-  game.turn =
-    mark === 'X'
-      ? 'O'
-      : 'X';
+function resetRoundLocal(){
+  clearTimeout(aiMoveTimer);
+
+  game.board = cloneBoard();
+  game.wins = [...EMPTY_WINS];
+  game.turn = "X";
+  game.status = "playing";
+  game.winner = "";
+  game.phase = "playing";
+  game.lastMoveId = "";
+
+  resultShown = false;
 
   renderGame();
 
-  if (
-    game.mode === 'online'
-  ) {
-    publishMove();
-
-  } else if (
-    game.turn === 'O'
-  ) {
+  if(game.mode === "offline" && game.turn === "O"){
     scheduleAI();
   }
 }
 
-async function publishMove() {
-  if (!game.matchId) {
-    return;
-  }
+function scheduleAI(){
+  clearTimeout(aiMoveTimer);
 
-  const moveId =
-    player.id +
-    '_' +
-    Date.now().toString(36) +
-    '_' +
-    Math.random()
-      .toString(36)
-      .slice(2, 6);
+  const delay =
+    game.ai === "easy" ? 420 :
+    game.ai === "medium" ? 520 :
+    650;
 
-  game.lastMoveId =
-    moveId;
+  aiMoveTimer = setTimeout(()=>{
+    if(game.status !== "playing") return;
+    if(game.turn !== "O") return;
 
-  await window.dbUpdate(
-    ref(
-      'matches/' +
-      game.matchId
-    ),
-    {
-      board: cloneBoard(),
-      wins: game.wins.slice(),
-      target: game.target,
-      turn: game.turn,
-      version: Date.now(),
-      lastMoveId: moveId,
-      updatedAt: Date.now()
+    const move = chooseAIMove();
+
+    if(move){
+      makeMove(move.board,move.cell,"O");
     }
-  );
+  },delay);
 }
 
+function chooseAIMove(){
+  const legal = getLegalMoves(game.board,game.wins);
 
-//#region ======================================================
-// 09 - الذكاء الاصطناعي AI
-//#endregion ===================================================
+  if(!legal.length) return null;
 
+  if(game.ai === "easy"){
+    return easyMove(legal);
+  }
 
-//#region ------------------------------------------------------
-// 09.1 - تشغيل وتأخير الذكاء الاصطناعي
-//#endregion --------------------------------------------------
+  if(game.ai === "medium"){
+    return mediumMove(legal);
+  }
 
-function scheduleAI() {
-  clearTimeout(timers.ai);
-
-  timers.ai =
-    setTimeout(
-      () => {
-        timers.ai = null;
-
-        if (
-          game.mode === 'offline' &&
-          game.status === 'playing' &&
-          game.turn === 'O'
-        ) {
-          aiMove();
-        }
-      },
-      aiDelay()
-    );
+  return grandmasterMove(legal);
 }
 
-function aiDelay() {
-  if (game.ai === 'easy') {
-    return 220;
-  }
+function easyMove(legal){
+  const win = findWinningMove("O",legal);
+  if(win && Math.random() > .15) return win;
 
-  if (game.ai === 'medium') {
-    return 330;
-  }
+  const block = findWinningMove("X",legal);
+  if(block && Math.random() > .18) return block;
 
-  return 480;
+  const center = legal.find(m=>m.cell === 4);
+  if(center && Math.random() > .35) return center;
+
+  return legal[Math.floor(Math.random()*legal.length)];
 }
 
-function aiMove() {
-  const moves =
-    getLegalMoves();
+function mediumMove(legal){
+  const win = findWinningMove("O",legal);
+  if(win) return win;
 
-  if (!moves.length) {
-    return;
-  }
+  const block = findWinningMove("X",legal);
+  if(block) return block;
 
-  let move;
+  const scored = legal.map(move=>({
+    move,
+    score:scoreMove(move,"O")
+  }));
 
-  if (game.ai === 'easy') {
-    move =
-      easyMove(moves);
+  scored.sort((a,b)=>b.score-a.score);
 
-  } else if (game.ai === 'medium') {
-    move =
-      mediumMove(moves);
-
-  } else {
-    move =
-      grandmasterMove(moves);
-  }
-
-  applyMove(
-    move.b,
-    move.c,
-    'O'
-  );
+  return scored[0]?.move || legal[0];
 }
 
+function grandmasterMove(legal){
+  const win = findWinningMove("O",legal);
+  if(win) return win;
 
-//#region ------------------------------------------------------
-// 09.2 - أدوات وتقييم حركات الذكاء الاصطناعي
-//#endregion --------------------------------------------------
+  const block = findWinningMove("X",legal);
+  if(block) return block;
 
-function getLegalMoves() {
-  const moves = [];
+  let best = null;
+  let bestScore = -Infinity;
 
-  const boards =
-    game.target === null
-      ? game.wins
-          .map(
-            (value, index) =>
-              value === null
-                ? index
-                : -1
-          )
-          .filter(index => index >= 0)
-      : [game.target];
+  for(const move of legal){
+    const score =
+      scoreMove(move,"O") +
+      localBoardPotential(move.board,"O") * 2 +
+      nextBoardPressure(move) * 1.5;
 
-  for (const boardIndex of boards) {
-    for (let cellIndex = 0; cellIndex < 9; cellIndex++) {
-      if (
-        !game.board[boardIndex][cellIndex]
-      ) {
-        moves.push({
-          b: boardIndex,
-          c: cellIndex
-        });
+    if(score > bestScore){
+      bestScore = score;
+      best = move;
+    }
+  }
+
+  return best || legal[0];
+}
+
+function getLegalMoves(board,wins){
+  const result = [];
+
+  const forced = game.turn === "X" ? game.lastMoveId : game.lastMoveId;
+  let forcedBoard = null;
+
+  if(game.lastMoveId){
+    const n = Number(game.lastMoveId);
+    if(Number.isInteger(n) && n >= 0 && n < 9){
+      if(!wins[n] && board[n].some(v=>!v)){
+        forcedBoard = n;
       }
     }
   }
 
-  return moves;
+  for(let b=0;b<9;b++){
+    if(wins[b]) continue;
+    if(forcedBoard !== null && b !== forcedBoard) continue;
+
+    for(let c=0;c<9;c++){
+      if(!board[b][c]){
+        result.push({board:b,cell:c});
+      }
+    }
+  }
+
+  if(!result.length && forcedBoard !== null){
+    for(let b=0;b<9;b++){
+      if(wins[b]) continue;
+
+      for(let c=0;c<9;c++){
+        if(!board[b][c]){
+          result.push({board:b,cell:c});
+        }
+      }
+    }
+  }
+
+  return result;
 }
 
-function smallWinMove(b, mark) {
-  for (let c = 0; c < 9; c++) {
-    if (!game.board[b][c]) {
-      game.board[b][c] = mark;
+function findWinningMove(symbol,legal){
+  for(const move of legal){
+    const test = clone(game.board);
+    test[move.board][move.cell] = symbol;
 
-      const win =
-        checkSmallWin(
-          game.board[b]
-        );
+    if(checkLocalWinner(test[move.board]) === symbol){
+      return move;
+    }
 
-      game.board[b][c] = '';
+    const localWins = [...game.wins];
 
-      if (win) {
-        return c;
+    if(checkLocalWinner(test[move.board])){
+      localWins[move.board] = symbol;
+
+      if(checkUltimateWinner(localWins) === symbol){
+        return move;
       }
     }
   }
@@ -1513,1866 +979,963 @@ function smallWinMove(b, mark) {
   return null;
 }
 
-function easyMove(moves) {
-  const winning =
-    moves.find(
-      move =>
-        smallWinMove(
-          move.b,
-          'O'
-        ) === move.c
-    );
-
-  if (
-    winning &&
-    Math.random() < 0.72
-  ) {
-    return winning;
-  }
-
-  const blocking =
-    moves.find(
-      move =>
-        smallWinMove(
-          move.b,
-          'X'
-        ) === move.c
-    );
-
-  if (
-    blocking &&
-    Math.random() < 0.58
-  ) {
-    return blocking;
-  }
-
-  const scored =
-    moves
-      .map(move => ({
-        move,
-
-        score:
-          cellHeuristic(
-            move.b,
-            move.c
-          ) +
-          Math.random() * 4
-      }))
-      .sort(
-        (a, b) =>
-          b.score - a.score
-      );
-
-  return scored[
-    Math.floor(
-      Math.random() *
-      Math.min(
-        4,
-        scored.length
-      )
-    )
-  ].move;
-}
-
-function mediumMove(moves) {
-  const win =
-    moves.find(
-      move =>
-        smallWinMove(
-          move.b,
-          'O'
-        ) === move.c
-    );
-
-  if (win) {
-    return win;
-  }
-
-  const block =
-    moves.find(
-      move =>
-        smallWinMove(
-          move.b,
-          'X'
-        ) === move.c
-    );
-
-  if (block) {
-    return block;
-  }
-
-  const scored =
-    moves
-      .map(move => ({
-        move,
-
-        score:
-          cellHeuristic(
-            move.b,
-            move.c
-          ) +
-          futureBoardValue(
-            move.b,
-            move.c
-          ) * 1.4
-      }))
-      .sort(
-        (a, b) =>
-          b.score - a.score
-      );
-
-  return scored[0].move;
-}
-
-function grandmasterMove(moves) {
-  let best = null;
-  let bestScore = -Infinity;
-
-  for (const move of moves) {
-    const before =
-      game.board[move.b][move.c];
-
-    game.board[move.b][move.c] =
-      'O';
-
-    let score = 0;
-
-    if (
-      checkSmallWin(
-        game.board[move.b]
-      )
-    ) {
-      score += 100000;
-    }
-
-    const next =
-      game.wins[move.c];
-
-    if (next !== null) {
-      score -= 1800;
-    }
-
-    score +=
-      cellHeuristic(
-        move.b,
-        move.c
-      ) * 8;
-
-    score +=
-      futureBoardValue(
-        move.b,
-        move.c
-      ) * 20;
-
-    score +=
-      createThreats(
-        move.b,
-        'O'
-      ) * 90;
-
-    score -=
-      createThreats(
-        move.b,
-        'X'
-      ) * 120;
-
-    score +=
-      globalPotential(
-        'O'
-      ) * 150;
-
-    score -=
-      globalPotential(
-        'X'
-      ) * 170;
-
-    const replies =
-      getOpponentReplies(
-        move.b,
-        move.c
-      );
-
-    for (const reply of replies) {
-      game.board[reply.b][reply.c] =
-        'X';
-
-      if (
-        checkSmallWin(
-          game.board[reply.b]
-        )
-      ) {
-        score -= 45000;
-      }
-
-      score -=
-        createThreats(
-          reply.b,
-          'X'
-        ) * 90;
-
-      game.board[reply.b][reply.c] =
-        '';
-    }
-
-    game.board[move.b][move.c] =
-      before;
-
-    if (score > bestScore) {
-      bestScore = score;
-      best = move;
-    }
-  }
-
-  return best || moves[0];
-}
-
-function getOpponentReplies(b, c) {
-  const target =
-    game.wins[c] === null
-      ? c
-      : null;
-
-  const boards =
-    target === null
-      ? game.wins
-          .map(
-            (value, index) =>
-              value === null
-                ? index
-                : -1
-          )
-          .filter(index => index >= 0)
-      : [target];
-
-  const replies = [];
-
-  for (const boardIndex of boards) {
-    for (let cellIndex = 0; cellIndex < 9; cellIndex++) {
-      if (
-        !game.board[boardIndex][cellIndex]
-      ) {
-        replies.push({
-          b: boardIndex,
-          c: cellIndex
-        });
-      }
-    }
-  }
-
-  return replies.slice(0, 18);
-}
-
-function cellHeuristic(b, c) {
+function scoreMove(move,symbol){
   let score = 0;
 
-  if (c === 4) {
-    score += 9;
+  if(move.cell === 4) score += 5;
+  if([0,2,6,8].includes(move.cell)) score += 3;
 
-  } else if (
-    [0, 2, 6, 8].includes(c)
-  ) {
-    score += 5;
+  const board = game.board[move.board];
 
-  } else {
-    score += 2;
-  }
+  const own = board.filter(v=>v===symbol).length;
+  const opp = board.filter(v=>v && v!==symbol).length;
 
-  if (
-    game.wins[c] === null
-  ) {
-    score += 5;
-  } else {
-    score -= 8;
-  }
+  score += own * 2;
+  score -= opp;
+
+  if(move.board === move.cell) score += 3;
 
   return score;
 }
 
-function futureBoardValue(b, c) {
-  let value = 0;
-
-  if (
-    game.wins[c] === null
-  ) {
-    const empties =
-      game.board[c].filter(
-        cell => !cell
-      ).length;
-
-    value +=
-      (9 - empties) * 2;
-  }
-
-  return value;
+function localBoardPotential(move,symbol){
+  const board = game.board[move.board];
+  return board.filter(v=>v===symbol).length;
 }
 
-function createThreats(b, mark) {
-  let count = 0;
+function nextBoardPressure(move){
+  const next = move.cell;
 
-  for (const line of WIN_LINES) {
-    const values =
-      line.map(
-        index =>
-          game.board[b][index]
-      );
+  if(game.wins[next]) return 3;
+  if(game.board[next].every(Boolean)) return 2;
 
-    if (
-      values.filter(
-        value => value === mark
-      ).length === 2 &&
-      values.includes('')
-    ) {
-      count++;
+  return 1;
+}
+//#endregion
+
+
+//#region MOVE ENGINE
+function validMove(boardIndex,cellIndex){
+  if(game.status !== "playing") return false;
+  if(game.phase !== "playing") return false;
+
+  if(!Number.isInteger(boardIndex) || !Number.isInteger(cellIndex)){
+    return false;
+  }
+
+  if(game.board[boardIndex][cellIndex]) return false;
+  if(game.wins[boardIndex]) return false;
+
+  if(game.turn !== game.role) return false;
+
+  if(game.lastMoveId !== ""){
+    const forced = Number(game.lastMoveId);
+
+    if(
+      Number.isInteger(forced) &&
+      forced >= 0 &&
+      forced < 9 &&
+      !game.wins[forced] &&
+      game.board[forced].some(v=>!v) &&
+      boardIndex !== forced
+    ){
+      return false;
     }
   }
 
-  return count;
+  return true;
 }
 
-function globalPotential(mark) {
-  let count = 0;
+function makeMove(boardIndex,cellIndex,symbol){
+  if(game.status !== "playing") return;
+  if(game.board[boardIndex][cellIndex]) return;
 
-  for (const line of WIN_LINES) {
-    const values =
-      line.map(
-        index =>
-          game.wins[index]
-      );
+  game.board[boardIndex][cellIndex] = symbol;
 
-    const enemy =
-      mark === 'O'
-        ? 'X'
-        : 'O';
+  const localWinner = checkLocalWinner(game.board[boardIndex]);
 
-    if (
-      !values.includes(enemy) &&
-      values.filter(
-        value => value === mark
-      ).length > 0
-    ) {
-      count++;
-    }
+  if(localWinner && !game.wins[boardIndex]){
+    game.wins[boardIndex] = localWinner;
   }
 
-  return count;
-}
+  const ultimateWinner = checkUltimateWinner(game.wins);
 
+  if(ultimateWinner){
+    game.status = "finished";
+    game.winner = ultimateWinner;
+    game.phase = "result";
 
-//#region ======================================================
-// 11 - فحص الفوز والتعادل وإنهاء الجولة
-//#endregion ===================================================
+    renderGame();
 
-function checkSmallWin(cells) {
-  return WIN_LINES.some(
-    ([a, b, c]) =>
-      cells[a] &&
-      cells[a] === cells[b] &&
-      cells[a] === cells[c]
-  );
-}
-
-function checkUltimateWin(wins) {
-  return WIN_LINES.some(
-    ([a, b, c]) =>
-      wins[a] &&
-      wins[a] !== 'DRAW' &&
-      wins[a] === wins[b] &&
-      wins[a] === wins[c]
-  );
-}
-
-async function finishRound(winner) {
-  if (
-    game.status !== 'playing'
-  ) {
+    finishRound(ultimateWinner);
     return;
   }
 
-  game.status = 'finished';
+  if(game.board.every((b,i)=>game.wins[i] || b.every(Boolean))){
+    game.status = "finished";
+    game.winner = "DRAW";
+    game.phase = "result";
 
-  clearTimeout(timers.ai);
+    renderGame();
 
-  const me = game.role;
-
-  const isWin =
-    winner !== 'DRAW' &&
-    winner === me;
-
-  const isDraw =
-    winner === 'DRAW';
-
-  if (isWin) {
-    player.points += 3;
-    player.stats.wins++;
-
-  } else if (!isDraw) {
-    player.points =
-      Math.max(
-        0,
-        player.points - 1
-      );
-
-    player.stats.losses++;
-
-  } else {
-    player.points += 1;
-  }
-
-  player.stats.total++;
-
-  updateHeader();
-
-  await savePlayerStats();
-
-  const cupWin =
-    winner !== 'DRAW' &&
-    game.scores[winner] + 1 >=
-      game.targetWins;
-
-  game.scores[
-    winner === 'DRAW'
-      ? 'X'
-      : winner
-  ] +=
-    winner === 'DRAW'
-      ? 0
-      : 1;
-
-  const result = {
-    id:
-      'r_' +
-      Date.now().toString(36),
-
-    winner,
-
-    winnerName:
-      winner === 'DRAW'
-        ? 'Draw'
-        : (
-            winner === me
-              ? player.name
-              : game.opponentName
-          ),
-
-    cupWin,
-
-    scores:
-      game.scores
-  };
-
-  if (
-    game.mode === 'online'
-  ) {
-    await window.dbUpdate(
-      ref(
-        'matches/' +
-        game.matchId
-      ),
-      {
-        status: 'playing',
-        phase: 'result',
-        scores: game.scores,
-        result,
-        updatedAt: Date.now()
-      }
-    );
-
-    showResultOnce(
-      result,
-      result.id
-    );
-
-  } else {
-    showResultOnce(
-      result,
-      result.id
-    );
-  }
-}
-
-function showResultOnce(result, id) {
-  if (
-    resultShownId === id
-  ) {
+    finishRound("DRAW");
     return;
   }
 
-  resultShownId = id;
+  game.lastMoveId = String(cellIndex);
+  game.turn = symbol === "X" ? "O" : "X";
 
-  playSound(
-    result.winner === game.role
-      ? 'win'
-      : result.winner === 'DRAW'
-        ? 'bell'
-        : 'lose'
-  );
-
-  $('resultTitle')
-    .textContent =
-    result.winner === 'DRAW'
-      ? '🤝 تعادل'
-      : result.winner === game.role
-        ? '🏆 أنت كسبت الجولة'
-        : 'الجولة للخصم';
-
-  $('resultText')
-    .textContent =
-    result.cupWin
-      ? `انتهت الكأس — النتيجة ${result.scores.X} : ${result.scores.O}`
-      : `النتيجة ${result.scores.X} : ${result.scores.O} — اختر الجولة التالية أو أنهِ المباراة.`;
-
-  $('resultOverlay')
-    .classList
-    .remove('hidden');
-
-  $('acceptRematch')
-    .textContent =
-    result.cupWin
-      ? '🏆 كأس جديدة'
-      : '▶ الجولة التالية';
-}
-
-$('acceptRematch').onclick =
-  async () => {
-    if (
-      game.mode !== 'online'
-    ) {
-      $('resultOverlay')
-        .classList
-        .add('hidden');
-
-      resultShownId = null;
-
-      if (
-        game.scores.X >= game.targetWins ||
-        game.scores.O >= game.targetWins
-      ) {
-        game.scores = {
-          X: 0,
-          O: 0
-        };
-      }
-
-      resetLocalRound();
-
-      return;
-    }
-
-    if (!game.matchId) {
-      return;
-    }
-
-    $('acceptRematch')
-      .disabled = true;
-
-    await window.dbUpdate(
-      ref(
-        'matches/' +
-        game.matchId +
-        '/rematch'
-      ),
-      {
-        [game.role]: 'accepted',
-
-        id:
-          'rm_' +
-          Date.now().toString(36)
-      }
-    );
-  };
-
-$('exitResult').onclick =
-  () => endMatch('left');
-
-
-//#region ======================================================
-// 12 - إعادة الجولة وطلبات Restart و Rematch
-//#endregion ===================================================
-
-function resetLocalRound() {
-  game.board =
-    EMPTY_BOARD();
-
-  game.wins =
-    EMPTY_WINS();
-
-  game.target = null;
-
-  game.turn = 'X';
-
-  game.winner = null;
-
-  game.status = 'playing';
+  playSound("click");
 
   renderGame();
 
-  if (
-    game.turn === 'O'
-  ) {
+  if(game.mode === "offline" && game.turn === "O"){
     scheduleAI();
   }
-}
 
-function handleRematchState(data) {
-  const rematch =
-    data.rematch;
-
-  if (!rematch) {
-    return;
-  }
-
-  if (
-    rematch.X === 'accepted' &&
-    rematch.O === 'accepted' &&
-    game.role === 'X' &&
-    rematchHandledId !== rematch.id
-  ) {
-    rematchHandledId =
-      rematch.id;
-
-    const newScores =
-      data.result?.cupWin
-        ? {
-            X: 0,
-            O: 0
-          }
-        : game.scores;
-
-    window.dbUpdate(
-      ref(
-        'matches/' +
-        game.matchId
-      ),
-      {
-        board: EMPTY_BOARD(),
-        wins: EMPTY_WINS(),
-        target: null,
-        turn: 'X',
-        scores: newScores,
-        result: null,
-        rematch: null,
-        phase: 'active',
-        status: 'playing',
-        updatedAt: Date.now()
-      }
-    );
-  }
-
-  if (
-    rematch[game.role] === 'accepted'
-  ) {
-    $('acceptRematch')
-      .textContent =
-      '⏳ انتظار موافقة الخصم';
-  }
-
-  if (
-    rematch.X === 'declined' ||
-    rematch.O === 'declined'
-  ) {
-    closeGameUI(
-      'أحد اللاعبين أنهى المباراة.'
-    );
+  if(game.mode === "online"){
+    publishMove();
   }
 }
 
-$('restartGame').onclick =
-  async () => {
-    if (
-      game.mode !== 'online'
-    ) {
-      resetLocalRound();
-      return;
+function checkLocalWinner(board){
+  for(const [a,b,c] of WIN_LINES){
+    if(board[a] && board[a] === board[b] && board[a] === board[c]){
+      return board[a];
     }
-
-    if (
-      !game.matchId ||
-      game.status !== 'playing'
-    ) {
-      return;
-    }
-
-    const id =
-      'rs_' +
-      Date.now().toString(36);
-
-    await window.dbUpdate(
-      ref(
-        'matches/' +
-        game.matchId +
-        '/request'
-      ),
-      {
-        type: 'restart',
-        id,
-        from: game.role,
-        status: 'pending'
-      }
-    );
-
-    showToast(
-      'تم إرسال طلب Restart. لن تتغير اللوحة قبل موافقة الخصم.'
-    );
-  };
-
-function handleResetState(data) {
-  const request =
-    data.request;
-
-  if (!request) {
-    $('restartOverlay')
-      .classList
-      .add('hidden');
-
-    return;
   }
 
-  if (
-    request.type === 'restart' &&
-    request.status === 'pending' &&
-    request.from !== game.role
-  ) {
-    $('restartText')
-      .textContent =
-      `${game.opponentName} يطلب إعادة الجولة الحالية.`;
-
-    $('restartOverlay')
-      .classList
-      .remove('hidden');
-  }
-
-  if (
-    request.type === 'restart' &&
-    request.status === 'declined' &&
-    request.from === game.role &&
-    resetHandledId !== request.id
-  ) {
-    resetHandledId =
-      request.id;
-
-    $('restartOverlay')
-      .classList
-      .add('hidden');
-
-    showToast(
-      'الخصم رفض إعادة الجولة',
-      'bad'
-    );
-
-    window.dbUpdate(
-      ref(
-        'matches/' +
-        game.matchId +
-        '/request'
-      ),
-      {
-        status: 'cleared'
-      }
-    );
-  }
-
-  if (
-    request.type === 'restart' &&
-    request.status === 'accepted' &&
-    game.role === 'X' &&
-    resetHandledId !== request.id
-  ) {
-    resetHandledId =
-      request.id;
-
-    window.dbUpdate(
-      ref(
-        'matches/' +
-        game.matchId
-      ),
-      {
-        board: EMPTY_BOARD(),
-        wins: EMPTY_WINS(),
-        target: null,
-        turn: 'X',
-        result: null,
-        rematch: null,
-        request: null,
-        phase: 'active',
-        status: 'playing',
-        updatedAt: Date.now()
-      }
-    );
-  }
+  return "";
 }
 
-$('acceptRestart').onclick =
-  async () => {
-    const id =
-      game.matchId;
+function checkUltimateWinner(wins){
+  return checkLocalWinner(wins);
+}
+//#endregion
 
-    if (!id) {
-      return;
-    }
 
-    $('restartOverlay')
-      .classList
-      .add('hidden');
+//#region GAME RENDER
+function showGameScreen(){
+  $("gameScreen").classList.remove("hidden");
+  renderGame();
+}
 
-    await window.dbUpdate(
-      ref(
-        'matches/' +
-        id +
-        '/request'
-      ),
-      {
-        status: 'accepted'
+function hideGameScreen(){
+  $("gameScreen").classList.add("hidden");
+  closeOverlay("resultOverlay");
+  closeOverlay("disconnectOverlay");
+
+  clearTimeout(aiMoveTimer);
+  clearInterval(disconnectTimer);
+}
+
+function renderGame(){
+  if(!$("ultimateBoard")) return;
+
+  $("gameTitle").textContent =
+    game.mode === "offline"
+      ? `ضد ${game.opponentName}`
+      : `Online • ${formatName(game.format)}`;
+
+  $("gameOpponent").textContent =
+    `vs ${game.opponentName || "Opponent"}`;
+
+  $("scoreX").textContent = game.scores.X;
+  $("scoreO").textContent = game.scores.O;
+
+  $("turnText").textContent = game.turn;
+
+  const root = $("ultimateBoard");
+  root.innerHTML = "";
+
+  for(let b=0;b<9;b++){
+    const boardEl = document.createElement("div");
+    boardEl.className = "local-board";
+
+    const forced =
+      game.lastMoveId !== "" &&
+      Number(game.lastMoveId) === b &&
+      !game.wins[b] &&
+      game.board[b].some(v=>!v);
+
+    if(forced) boardEl.classList.add("active");
+    if(game.wins[b]) boardEl.classList.add("locked");
+
+    for(let c=0;c<9;c++){
+      const cell = document.createElement("button");
+
+      cell.className = "cell";
+
+      const value = game.board[b][c];
+
+      if(value){
+        cell.textContent = value;
+        cell.classList.add(value.toLowerCase());
       }
-    );
-  };
 
-$('declineRestart').onclick =
-  async () => {
-    const id =
-      game.matchId;
+      cell.disabled =
+        !validMove(b,c) ||
+        Boolean(value);
 
-    if (!id) {
-      return;
-    }
-
-    $('restartOverlay')
-      .classList
-      .add('hidden');
-
-    await window.dbUpdate(
-      ref(
-        'matches/' +
-        id +
-        '/request'
-      ),
-      {
-        status: 'declined'
-      }
-    );
-  };
-
-$('endGame').onclick =
-  () => endMatch('left');
-
-$('leaveGame').onclick =
-  () => {
-    if (
-      game.mode === 'online'
-    ) {
-      endMatch('left');
-
-    } else {
-      clearTimeout(timers.ai);
-
-      game.matchId = null;
-      game.status = 'idle';
-
-      $('gameScreen')
-        .classList
-        .add('hidden');
-
-      $('app')
-        .classList
-        .remove('hidden');
-
-      navigate('play');
-    }
-  };
-
-$('disconnectLeave').onclick =
-  () => {
-    stopDisconnect();
-    endMatch('left');
-  };
-
-
-//#region ======================================================
-// 13 - إنهاء المباراة والاتصال والانقطاع 30 ثانية
-//#endregion ===================================================
-
-async function endMatch(reason) {
-  if (
-    game.mode === 'online' &&
-    game.matchId &&
-    dbReady()
-  ) {
-    try {
-      await window.dbUpdate(
-        ref(
-          'matches/' +
-          game.matchId
-        ),
-        {
-          closed: true,
-          status: 'closed',
-          closedReason: reason,
-          closedBy: game.role,
-          updatedAt: Date.now()
+      cell.onclick = ()=>{
+        if(validMove(b,c)){
+          makeMove(b,c,game.role);
         }
-      );
-    } catch {}
+      };
+
+      boardEl.appendChild(cell);
+    }
+
+    if(game.wins[b]){
+      const overlay = document.createElement("div");
+      overlay.className = "local-overlay";
+      overlay.textContent = game.wins[b];
+      overlay.style.color =
+        game.wins[b] === "X"
+          ? "#67e8f9"
+          : "#f9a8d4";
+
+      boardEl.appendChild(overlay);
+    }
+
+    root.appendChild(boardEl);
+  }
+}
+//#endregion
+
+
+//#region ROUND RESULT
+async function finishRound(winner){
+  if(resultShown) return;
+
+  resultShown = true;
+
+  const resultId =
+    game.matchId
+      ? `${game.matchId}-${game.scores.X}-${game.scores.O}-${Date.now()}`
+      : `offline-${Date.now()}`;
+
+  settledResultId = resultId;
+
+  let myResult = "draw";
+
+  if(winner === game.role){
+    myResult = "win";
+  }else if(winner !== "DRAW"){
+    myResult = "loss";
   }
 
-  closeGameUI(
-    'تم إنهاء المباراة للطرفين.'
+  await settleStats(myResult);
+
+  if(winner === game.role){
+    game.scores[game.role]++;
+  }else if(winner !== "DRAW"){
+    const other = game.role === "X" ? "O" : "X";
+    game.scores[other]++;
+  }
+
+  renderGame();
+
+  if(game.mode === "online"){
+    await writeOnlineResult(winner,resultId);
+  }
+
+  showResult(winner);
+}
+
+async function settleStats(result){
+  if(!currentUser) return;
+
+  if(result === "win"){
+    currentUser.points += 3;
+    currentUser.wins++;
+  }else if(result === "loss"){
+    currentUser.points = Math.max(0,currentUser.points - 1);
+    currentUser.losses++;
+  }else{
+    currentUser.points += 1;
+    currentUser.draws++;
+  }
+
+  currentUser.total++;
+
+  await savePlayerStats();
+}
+
+async function settleRemoteResult(result){
+  if(!result || !result.id) return;
+  if(settledResultId === result.id) return;
+
+  settledResultId = result.id;
+
+  let myResult = "draw";
+
+  if(result.winner === game.role){
+    myResult = "win";
+  }else if(result.winner !== "DRAW"){
+    myResult = "loss";
+  }
+
+  await settleStats(myResult);
+}
+
+function showResult(winner){
+  if(game.mode === "online"){
+    if(winner === game.role){
+      $("resultTitle").textContent = "🏆 فوز!";
+      $("resultText").textContent = "أنت فزت بالجولة.";
+      playSound("win");
+    }else if(winner === "DRAW"){
+      $("resultTitle").textContent = "تعادل";
+      $("resultText").textContent = "الجولة انتهت بالتعادل.";
+      playSound("bell");
+    }else{
+      $("resultTitle").textContent = "الجولة انتهت";
+      $("resultText").textContent = "الخصم فاز بالجولة.";
+      playSound("lose");
+    }
+
+    $("acceptRematch").textContent =
+      game.scores.X >= game.target ||
+      game.scores.O >= game.target
+        ? "مباراة جديدة"
+        : "الجولة التالية";
+
+    openOverlay("resultOverlay");
+    return;
+  }
+
+  if(winner === "X"){
+    $("resultTitle").textContent = "🏆 فوز!";
+    $("resultText").textContent = "أحسنت! فزت بالجولة.";
+    playSound("win");
+  }else if(winner === "DRAW"){
+    $("resultTitle").textContent = "تعادل";
+    $("resultText").textContent = "الجولة انتهت بالتعادل.";
+    playSound("bell");
+  }else{
+    $("resultTitle").textContent = "انتهت الجولة";
+    $("resultText").textContent = "الذكاء الاصطناعي فاز.";
+    playSound("lose");
+  }
+
+  const matchFinished =
+    game.format === "1" ||
+    game.target === Infinity ||
+    game.scores.X >= game.target ||
+    game.scores.O >= game.target;
+
+  $("acceptRematch").textContent =
+    matchFinished ? "مباراة جديدة" : "الجولة التالية";
+
+  openOverlay("resultOverlay");
+}
+//#endregion
+
+
+//#region ONLINE MATCH
+function openOnlineMatch(matchId,role,opponentId,opponentName,format){
+  game.mode = "online";
+  game.matchId = matchId;
+  game.role = role;
+  game.opponentId = opponentId;
+  game.opponentName = opponentName;
+  game.format = format;
+  game.target = targetWins(format);
+  game.phase = "playing";
+  resultShown = false;
+
+  showGameScreen();
+  watchMatch(matchId);
+}
+
+function watchMatch(matchId){
+  if(!matchId) return;
+
+  dbOnValue(
+    dbRef(db,`matches/${matchId}`),
+    async snap=>{
+      if(!snap.exists()){
+        endLocalMatch("المباراة غير موجودة.");
+        return;
+      }
+
+      const d = snap.val();
+
+      game.board = d.board || cloneBoard();
+      game.wins = d.wins || [...EMPTY_WINS];
+      game.turn = d.turn || "X";
+      game.scores = d.scores || {X:0,O:0};
+      game.target = Number(d.target ?? targetWins(d.format));
+      game.format = d.format || "1";
+
+      if(d.status === "closed"){
+        endLocalMatch(d.closedMessage || "تم إنهاء المباراة.");
+        return;
+      }
+
+      if(d.status === "playing"){
+        game.status = "playing";
+
+        if(d.phase === "result" && d.result){
+          game.status = "finished";
+          game.phase = "result";
+
+          await settleRemoteResult(d.result);
+
+          if(!resultShown){
+            showResult(d.result.winner);
+            resultShown = true;
+          }
+
+          return;
+        }
+
+        game.phase = "playing";
+      }
+
+      if(d.status === "finished" && d.result){
+        game.status = "finished";
+        game.phase = "result";
+
+        await settleRemoteResult(d.result);
+
+        if(!resultShown){
+          showResult(d.result.winner);
+          resultShown = true;
+        }
+
+        return;
+      }
+
+      renderGame();
+    }
   );
 }
 
-function handleConnectionFromMatch(data) {
-  if (
-    game.mode !== 'online'
-  ) {
-    return;
-  }
+async function publishMove(){
+  if(!game.matchId) return;
 
-  if (
-    !listeners.opponent &&
-    game.opponentId
-  ) {
-    listeners.opponent =
-      window.dbOnValue(
-        ref(
-          'players/' +
-          game.opponentId +
-          '/status'
-        ),
-        snapshot => {
-          const status =
-            snapshot.val();
+  const matchRef = dbRef(db,`matches/${game.matchId}`);
 
-          if (
-            status === 'offline'
-          ) {
-            startDisconnect();
-          } else {
-            stopDisconnect();
-          }
-        }
-      );
+  const version = Date.now();
+  const moveId = `${currentUser.id}-${version}`;
+
+  game.lastMoveId = game.lastMoveId || "";
+
+  try{
+    await dbUpdate(matchRef,{
+      board:clone(game.board),
+      wins:[...game.wins],
+      turn:game.turn,
+      scores:clone(game.scores),
+      status:"playing",
+      phase:"playing",
+      version,
+      lastMoveId:moveId,
+      updatedAt:version
+    });
+  }catch(err){
+    console.error(err);
+    showToast("تعذر مزامنة الحركة","bad");
   }
 }
 
-function startDisconnect() {
-  if (
-    timers.disconnect ||
-    game.status !== 'playing'
-  ) {
-    return;
-  }
+async function writeOnlineResult(winner,resultId){
+  if(!game.matchId) return;
 
-  timers.disconnectEndsAt =
-    Date.now() +
-    DISCONNECT_SECONDS * 1000;
+  const result = {
+    id:resultId,
+    winner,
+    scores:clone(game.scores),
+    at:Date.now()
+  };
 
-  $('disconnectOverlay')
-    .classList
-    .remove('hidden');
-
-  updateDisconnectText();
-
-  timers.disconnect =
-    setInterval(
-      updateDisconnectText,
-      250
+  try{
+    await dbUpdate(
+      dbRef(db,`matches/${game.matchId}`),
+      {
+        board:clone(game.board),
+        wins:[...game.wins],
+        scores:clone(game.scores),
+        turn:game.turn,
+        status:"playing",
+        phase:"result",
+        result,
+        updatedAt:Date.now()
+      }
     );
+  }catch(err){
+    console.error(err);
+  }
 }
 
-function updateDisconnectText() {
-  const left =
-    Math.max(
-      0,
-      Math.ceil(
-        (
-          timers.disconnectEndsAt -
-          Date.now()
-        ) / 1000
-      )
+async function requestRestart(){
+  if(game.mode !== "online" || !game.matchId) return;
+
+  try{
+    await dbUpdate(
+      dbRef(db,`matches/${game.matchId}/restart`),
+      {
+        requestedBy:currentUser.id,
+        status:"pending",
+        at:Date.now()
+      }
     );
 
-  $('disconnectCountdown')
-    .textContent = left;
+    showToast("تم إرسال طلب إعادة الجولة","good");
+  }catch{
+    showToast("تعذر إرسال طلب الإعادة","bad");
+  }
+}
 
-  if (left <= 0) {
-    stopDisconnect();
+async function acceptRestart(){
+  if(!game.matchId) return;
 
-    if (game.matchId) {
-      endMatch('timeout');
+  await dbUpdate(
+    dbRef(db,`matches/${game.matchId}/restart`),
+    {
+      status:"accepted",
+      acceptedBy:currentUser.id,
+      at:Date.now()
     }
-  }
+  );
+
+  closeOverlay("restartOverlay");
 }
 
-function stopDisconnect() {
-  if (timers.disconnect) {
-    clearInterval(
-      timers.disconnect
+async function declineRestart(){
+  if(!game.matchId) return;
+
+  await dbUpdate(
+    dbRef(db,`matches/${game.matchId}/restart`),
+    {
+      status:"declined",
+      declinedBy:currentUser.id,
+      at:Date.now()
+    }
+  );
+
+  closeOverlay("restartOverlay");
+}
+
+async function requestRematch(){
+  if(game.mode !== "online" || !game.matchId) return;
+
+  const finalMatch =
+    game.target !== Infinity &&
+    (game.scores.X >= game.target || game.scores.O >= game.target);
+
+  if(finalMatch || game.format === "1"){
+    await dbUpdate(
+      dbRef(db,`matches/${game.matchId}/rematch`),
+      {
+        status:"pending",
+        requestedBy:currentUser.id,
+        at:Date.now()
+      }
     );
 
-    timers.disconnect = null;
-  }
-
-  timers.disconnectEndsAt = 0;
-
-  $('disconnectOverlay')
-    .classList
-    .add('hidden');
-}
-
-
-//#region ======================================================
-// 14 - Presence وحفظ الإحصائيات وتسجيل الدخول
-//#endregion ===================================================
-
-function registerPresence(
-  status = 'online'
-) {
-  if (
-    !dbReady() ||
-    !player.id
-  ) {
+    $("acceptRematch").disabled = true;
+    $("acceptRematch").textContent = "في انتظار الخصم...";
     return;
   }
 
-  const playerRef =
-    ref(
-      'players/' +
-      player.id
-    );
+  await dbUpdate(
+    dbRef(db,`matches/${game.matchId}/rematch`),
+    {
+      status:"pending",
+      requestedBy:currentUser.id,
+      at:Date.now()
+    }
+  );
 
-  window.dbOnDisconnect(
-    playerRef
-  ).update({
-    status: 'offline',
-    lastActive: Date.now(),
-    currentSessionId:
-      sessionToken
+  $("acceptRematch").disabled = true;
+  $("acceptRematch").textContent = "في انتظار الخصم...";
+}
+
+async function endMatch(message="تم إنهاء المباراة."){
+  if(game.mode !== "online" || !game.matchId){
+    endLocalMatch(message);
+    return;
+  }
+
+  try{
+    await dbUpdate(
+      dbRef(db,`matches/${game.matchId}`),
+      {
+        status:"closed",
+        phase:"closed",
+        closedBy:currentUser.id,
+        closedMessage:message,
+        updatedAt:Date.now()
+      }
+    );
+  }catch{}
+
+  endLocalMatch(message);
+}
+
+function endLocalMatch(message){
+  clearTimeout(aiMoveTimer);
+  clearInterval(disconnectTimer);
+
+  closeOverlay("challengeOverlay");
+  closeOverlay("restartOverlay");
+  closeOverlay("resultOverlay");
+  closeOverlay("disconnectOverlay");
+
+  hideGameScreen();
+  navigate("home");
+
+  if(message){
+    showToast(message);
+  }
+}
+//#endregion
+
+
+//#region ONLINE STATE WATCHERS
+function watchRestart(){
+  if(!game.matchId) return;
+
+  dbOnValue(
+    dbRef(db,`matches/${game.matchId}/restart`),
+    async snap=>{
+      if(!snap.exists()) return;
+
+      const d = snap.val();
+
+      if(
+        d.status === "pending" &&
+        d.requestedBy !== currentUser.id
+      ){
+        $("restartText").textContent =
+          "الخصم يطلب إعادة الجولة الحالية.";
+
+        openOverlay("restartOverlay");
+      }
+
+      if(
+        d.status === "accepted" &&
+        d.acceptedBy !== currentUser.id
+      ){
+        await resetOnlineRound();
+      }
+
+      if(d.status === "declined"){
+        closeOverlay("restartOverlay");
+        showToast("الخصم رفض إعادة الجولة","bad");
+      }
+    }
+  );
+}
+
+async function resetOnlineRound(){
+  if(!game.matchId) return;
+
+  game.board = cloneBoard();
+  game.wins = [...EMPTY_WINS];
+  game.turn = "X";
+  game.status = "playing";
+  game.phase = "playing";
+  game.lastMoveId = "";
+  resultShown = false;
+
+  closeOverlay("resultOverlay");
+  closeOverlay("restartOverlay");
+
+  await dbUpdate(
+    dbRef(db,`matches/${game.matchId}`),
+    {
+      board:clone(game.board),
+      wins:[...game.wins],
+      turn:"X",
+      status:"playing",
+      phase:"playing",
+      result:null,
+      updatedAt:Date.now()
+    }
+  );
+
+  renderGame();
+}
+
+function watchRematch(){
+  if(!game.matchId) return;
+
+  dbOnValue(
+    dbRef(db,`matches/${game.matchId}/rematch`),
+    async snap=>{
+      if(!snap.exists()) return;
+
+      const d = snap.val();
+
+      if(
+        d.status === "pending" &&
+        d.requestedBy !== currentUser.id
+      ){
+        $("resultTitle").textContent = "الخصم يريد جولة جديدة";
+        $("resultText").textContent =
+          "وافق لبدء جولة جديدة بنفس نظام المباراة.";
+
+        $("acceptRematch").disabled = false;
+        $("acceptRematch").textContent = "قبول";
+
+        openOverlay("resultOverlay");
+      }
+
+      if(
+        d.status === "accepted" &&
+        d.acceptedBy !== currentUser.id
+      ){
+        await resetOnlineRound();
+      }
+    }
+  );
+}
+//#endregion
+
+
+//#region DISCONNECT
+function startDisconnectCountdown(){
+  clearInterval(disconnectTimer);
+
+  let left = DISCONNECT_SECONDS;
+
+  $("disconnectCountdown").textContent = left;
+  openOverlay("disconnectOverlay");
+
+  disconnectTimer = setInterval(()=>{
+    left--;
+
+    $("disconnectCountdown").textContent = Math.max(0,left);
+
+    if(left <= 0){
+      clearInterval(disconnectTimer);
+      endMatch("انتهت مهلة إعادة الاتصال.");
+    }
+  },1000);
+}
+
+function stopDisconnectCountdown(){
+  clearInterval(disconnectTimer);
+  disconnectTimer = null;
+  closeOverlay("disconnectOverlay");
+}
+
+function watchOpponentPresence(){
+  if(!game.opponentId) return;
+
+  dbOnValue(
+    dbRef(db,`players/${game.opponentId}/status`),
+    snap=>{
+      const status = snap.val();
+
+      if(game.mode !== "online") return;
+
+      if(status === "offline"){
+        startDisconnectCountdown();
+      }else{
+        stopDisconnectCountdown();
+      }
+    }
+  );
+}
+//#endregion
+
+
+//#region GAME BUTTONS
+function leaveGame(){
+  if(game.mode === "online"){
+    const ok = confirm("الخروج سيُنهي المباراة للطرفين. هل أنت متأكد؟");
+
+    if(!ok) return;
+
+    endMatch("قام أحد اللاعبين بإنهاء المباراة.");
+    return;
+  }
+
+  hideGameScreen();
+  navigate("home");
+}
+
+function restartGame(){
+  if(game.mode === "offline"){
+    resetRoundLocal();
+    return;
+  }
+
+  requestRestart();
+}
+
+function acceptRematchClick(){
+  if(game.mode !== "online"){
+    resetRoundLocal();
+    closeOverlay("resultOverlay");
+    return;
+  }
+
+  requestRematch();
+}
+
+async function exitResult(){
+  if(game.mode === "online"){
+    await endMatch("انتهت المباراة.");
+  }else{
+    closeOverlay("resultOverlay");
+    hideGameScreen();
+    navigate("home");
+  }
+}
+//#endregion
+
+
+//#region EVENTS
+function bindGlobalEvents(){
+  $("authForm").addEventListener("submit",authSubmit);
+
+  $("authSwitch").addEventListener("click",()=>{
+    setAuthMode(authMode === "login" ? "register" : "login");
   });
 
-  window.dbUpdate(
-    playerRef,
-    {
-      name: player.name,
-      points: player.points,
-      stats: player.stats,
-      theme: player.theme,
-      status,
-      lastActive: Date.now(),
-      currentSessionId:
-        sessionToken
+  $("mobileMenuBtn").addEventListener("click",toggleMobileMenu);
+
+  $("leaveGame").addEventListener("click",leaveGame);
+  $("restartGame").addEventListener("click",restartGame);
+  $("endGame").addEventListener("click",()=>{
+    if(game.mode === "online"){
+      endMatch("قام أحد اللاعبين بإنهاء المباراة.");
+    }else{
+      hideGameScreen();
+      navigate("home");
     }
-  );
-}
+  });
 
-async function savePlayerStats() {
-  if (
-    dbReady() &&
-    player.id
-  ) {
-    await window.dbUpdate(
-      ref(
-        'players/' +
-        player.id
-      ),
-      {
-        points: player.points,
-        stats: player.stats,
-        lastActive: Date.now()
-      }
-    );
-  }
-}
+  $("acceptChallenge").addEventListener("click",acceptChallenge);
+  $("declineChallenge").addEventListener("click",declineChallenge);
 
-async function loginOrRegister() {
-  const name =
-    safeName(
-      $('authName').value
-    );
+  $("acceptRestart").addEventListener("click",acceptRestart);
+  $("declineRestart").addEventListener("click",declineRestart);
 
-  const pin =
-    $('authPin')
-      .value
-      .trim();
+  $("acceptRematch").addEventListener("click",acceptRematchClick);
+  $("exitResult").addEventListener("click",exitResult);
 
-  if (
-    !name ||
-    !/^[0-9]{4}$/.test(pin)
-  ) {
-    notice(
-      'بيانات غير صحيحة',
-      'اكتب اسم لاعب صالح وPIN مكونًا من 4 أرقام.'
-    );
+  $("disconnectLeave").addEventListener("click",()=>{
+    endMatch("غادرت المباراة.");
+  });
 
-    return;
-  }
+  $("noticeOk").addEventListener("click",()=>{
+    closeOverlay("noticeOverlay");
+  });
 
-  if (!dbReady()) {
-    notice(
-      'Firebase',
-      'قاعدة البيانات لم تجهز بعد.'
-    );
-
-    return;
-  }
-
-  const snapshot =
-    await window.dbGet(
-      ref('players')
-    );
-
-  const all =
-    snapshot.val() || {};
-
-  let foundId = null;
-  let found = null;
-
-  for (
-    const [id, user] of
-    Object.entries(all)
-  ) {
-    if (
-      user?.name === name
-    ) {
-      foundId = id;
-      found = user;
-      break;
-    }
-  }
-
-  const register =
-    $('authSubmit')
-      .dataset
-      .mode === 'register';
-
-  if (register) {
-    if (foundId) {
-      notice(
-        'الاسم مستخدم',
-        'اختر اسمًا آخر أو سجّل الدخول.'
-      );
-
-      return;
-    }
-
-    player.id =
-      'p_' +
-      Math.random()
-        .toString(36)
-        .slice(2, 11);
-
-    player.name = name;
-    player.pin = pin;
-
-    player.points = 10;
-
-    player.stats = {
-      total: 0,
-      wins: 0,
-      losses: 0
-    };
-
-    await window.dbSet(
-      ref(
-        'players/' +
-        player.id
-      ),
-      {
-        name,
-        pin,
-        points: 10,
-        stats: player.stats,
-        theme: player.theme,
-        status: 'online',
-        lastActive: Date.now(),
-        currentSessionId:
-          sessionToken
-      }
-    );
-
-  } else {
-    if (
-      !foundId ||
-      !found ||
-      String(found.pin) !== pin
-    ) {
-      notice(
-        'فشل الدخول',
-        'اسم المستخدم أو PIN غير صحيح.'
-      );
-
-      return;
-    }
-
-    player.id =
-      foundId;
-
-    player.name =
-      found.name;
-
-    player.pin =
-      found.pin;
-
-    player.points =
-      found.points ?? 10;
-
-    player.stats =
-      found.stats || {
-        total: 0,
-        wins: 0,
-        losses: 0
-      };
-
-    player.theme =
-      found.theme ||
-      player.theme;
-  }
-
-  persistSession();
-
-  setTheme(
-    player.theme
-  );
-
-  registerPresence(
-    'online'
-  );
-
-  $('authScreen')
-    .classList
-    .add('hidden');
-
-  $('app')
-    .classList
-    .remove('hidden');
-
-  watchChallenge();
-
-  resumeState();
-
-  renderPage();
-}
-
-
-//#region ======================================================
-// 15 - المصادقة واستعادة الجلسة واستعادة المباراة
-//#endregion ===================================================
-
-function setupAuth() {
-  $('authForm').onsubmit =
-    event => {
-      event.preventDefault();
-
-      playSound();
-
-      loginOrRegister();
-    };
-
-  $('authSwitch').onclick =
-    () => {
-      const register =
-        $('authSubmit')
-          .dataset
-          .mode !== 'register';
-
-      $('authSubmit')
-        .dataset
-        .mode =
-        register
-          ? 'register'
-          : 'login';
-
-      $('authSubmit')
-        .textContent =
-        register
-          ? 'إنشاء الحساب'
-          : 'دخول';
-
-      $('authTitle')
-        .textContent =
-        register
-          ? 'إنشاء حساب'
-          : 'تسجيل الدخول';
-
-      $('authHint')
-        .textContent =
-        register
-          ? 'اختر اسمًا وPIN من 4 أرقام.'
-          : 'ادخل باسم اللاعب ورقم الـPIN الخاص بك.';
-
-      $('authSwitch')
-        .textContent =
-        register
-          ? 'لديك حساب بالفعل؟ تسجيل الدخول'
-          : 'ليس لديك حساب؟ إنشاء حساب';
-    };
-
-  $('authSubmit')
-    .dataset
-    .mode = 'login';
-}
-
-async function resumeSession() {
-  setupAuth();
-
-  if (!dbReady()) {
-    return;
-  }
-
-  const raw =
-    localStorage.getItem(
-      SESSION_KEY
-    );
-
-  if (!raw) {
-    $('authScreen')
-      .classList
-      .remove('hidden');
-
-    return;
-  }
-
-  try {
-    const session =
-      JSON.parse(raw);
-
-    const snapshot =
-      await window.dbGet(
-        ref(
-          'players/' +
-          session.id
-        )
-      );
-
-    const user =
-      snapshot.val();
-
-    if (!user) {
-      clearSession();
-
-      $('authScreen')
-        .classList
-        .remove('hidden');
-
-      return;
-    }
-
-    player.id =
-      session.id;
-
-    player.name =
-      user.name;
-
-    player.pin =
-      user.pin || '';
-
-    player.points =
-      user.points ?? 10;
-
-    player.stats =
-      user.stats || {
-        total: 0,
-        wins: 0,
-        losses: 0
-      };
-
-    player.theme =
-      user.theme ||
-      player.theme;
-
-    sessionToken =
-      session.token ||
-      sessionToken;
-
-    setTheme(
-      player.theme
-    );
-
-    registerPresence(
-      'online'
-    );
-
-    $('authScreen')
-      .classList
-      .add('hidden');
-
-    watchChallenge();
-
-    resumeState();
-
-    renderPage();
-
-  } catch {
-    $('authScreen')
-      .classList
-      .remove('hidden');
-  }
-}
-
-async function resumeState() {
-  if (game.matchId) {
-    return;
-  }
-
-  const raw =
-    localStorage.getItem(
-      MATCH_KEY
-    );
-
-  if (
-    raw &&
-    dbReady()
-  ) {
-    try {
-      const session =
-        JSON.parse(raw);
-
-      const snapshot =
-        await window.dbGet(
-          ref(
-            'matches/' +
-            session.matchId
-          )
-        );
-
-      const data =
-        snapshot.val();
-
-      if (
-        data &&
-        data.status !== 'closed'
-      ) {
-        game = {
-          ...game,
-
-          matchId:
-            session.matchId,
-
-          mode: 'online',
-
-          role:
-            session.role,
-
-          opponentId:
-            session.opponentId,
-
-          opponentName:
-            session.opponentName ||
-            'Opponent',
-
-          format:
-            session.format ||
-            data.format ||
-            '1',
-
-          targetWins:
-            targetWins(
-              session.format ||
-              data.format ||
-              '1'
-            ),
-
-          status:
-            data.status
-        };
-
-        watchMatch(
-          session.matchId
-        );
-
-        return;
-      }
-
-      clearMatchSession();
-
-    } catch {
-      clearMatchSession();
-    }
-  }
-}
-
-
-//#region ======================================================
-// 16 - Ranking و Profile والإحصائيات
-//#endregion ===================================================
-
-async function loadLeaderboard() {
-  if (!dbReady()) {
-    return;
-  }
-
-  const element =
-    $('leaderboardRows');
-
-  element.innerHTML =
-    '<p class="hint">جاري التحميل...</p>';
-
-  const snapshot =
-    await window.dbGet(
-      ref('players')
-    );
-
-  const players =
-    Object.values(
-      snapshot.val() || {}
-    ).sort(
-      (a, b) =>
-        (b.points || 0) -
-        (a.points || 0)
-    );
-
-  element.innerHTML = '';
-
-  players
-    .slice(0, 100)
-    .forEach(
-      (user, index) => {
-        const row =
-          document.createElement('div');
-
-        row.className =
-          'rank-row';
-
-        row.innerHTML = `
-          <span>
-            #${index + 1}
-          </span>
-
-          <strong>
-            ${escapeHtml(user.name || 'Player')}
-          </strong>
-
-          <b>
-            ${user.points || 0}
-          </b>
-
-          <span>
-            ${user.stats?.wins || 0}
-          </span>
-        `;
-
-        element.appendChild(row);
-      }
-    );
-
-  if (!players.length) {
-    element.innerHTML =
-      '<p class="hint">لا يوجد لاعبين بعد.</p>';
-  }
-}
-
-function bindProfile() {
-  $('profileName')
-    .textContent =
-    player.name;
-
-  $('profileAvatar')
-    .textContent =
-    (player.name || 'X')
-      .slice(0, 1)
-      .toUpperCase();
-
-  $('profilePoints')
-    .textContent =
-    player.points;
-
-  $('profileTotal')
-    .textContent =
-    player.stats.total;
-
-  $('profileWins')
-    .textContent =
-    player.stats.wins;
-
-  $('profileLosses')
-    .textContent =
-    player.stats.losses;
-
-  $('themeSelect')
-    .value =
-    player.theme;
-
-  $('themeSelect').onchange =
-    event =>
-      setTheme(
-        event.target.value
-      );
-
-  $('logoutBtn').onclick =
-    async () => {
-      if (
-        player.id &&
-        dbReady()
-      ) {
-        await window.dbUpdate(
-          ref(
-            'players/' +
-            player.id
-          ),
+  window.addEventListener("beforeunload",()=>{
+    if(currentUser && game.mode === "online"){
+      try{
+        dbUpdate(
+          dbRef(db,`players/${currentUser.id}`),
           {
-            status: 'offline'
+            status:"offline",
+            updatedAt:Date.now()
           }
         );
-      }
+      }catch{}
+    }
+  });
+}
+//#endregion
 
-      clearSession();
 
-      location.reload();
-    };
-
-  $('deleteBtn').onclick =
-    async () => {
-      if (
-        !confirm(
-          'حذف الحساب نهائيًا؟'
-        )
-      ) {
-        return;
-      }
-
-      if (
-        player.id &&
-        dbReady()
-      ) {
-        await window.dbRemove(
-          ref(
-            'players/' +
-            player.id
-          )
-        );
-
-        await window.dbRemove(
-          ref(
-            'challenges/' +
-            player.id
-          )
-        );
-      }
-
-      clearSession();
-
-      location.reload();
-    };
+//#region ESCAPE
+function escapeHtml(value){
+  return String(value)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
 }
 
-
-//#region ======================================================
-// 17 - أزرار الواجهة والخلفية والمؤثرات
-//#endregion ===================================================
-
-$('mobileMenuBtn').onclick =
-  () => {
-    $('mobileNav')
-      .classList
-      .toggle('open');
-  };
-
-$('acceptChallenge').onclick =
-  acceptChallenge;
-
-$('declineChallenge').onclick =
-  declineChallenge;
-
-window.addEventListener(
-  'hashchange',
-  () => {
-    const route =
-      location.hash.replace(
-        '#',
-        ''
-      );
-
-    if (
-      [
-        'home',
-        'play',
-        'online',
-        'leaderboard',
-        'profile',
-        'rules'
-      ].includes(route)
-    ) {
-      currentRoute = route;
-
-      saveView();
-
-      renderPage();
-    }
-  }
-);
+function escapeAttr(value){
+  return escapeHtml(value);
+}
+//#endregion
 
 
-//#region ------------------------------------------------------
-// 17.1 - الخلفية المتحركة
-//#endregion --------------------------------------------------
-
-const canvas =
-  $('bgCanvas');
-
-const ctx =
-  canvas.getContext('2d');
-
+//#region BACKGROUND
+const canvas = $("bgCanvas");
+const ctx = canvas.getContext("2d");
 let particles = [];
 
-function resizeCanvas() {
-  const d =
-    window.devicePixelRatio ||
-    1;
+function resizeCanvas(){
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
 
-  canvas.width =
-    innerWidth * d;
-
-  canvas.height =
-    innerHeight * d;
-
-  canvas.style.width =
-    innerWidth + 'px';
-
-  canvas.style.height =
-    innerHeight + 'px';
-
-  ctx.setTransform(
-    d,
-    0,
-    0,
-    d,
-    0,
-    0
-  );
-
-  particles =
-    Array.from(
-      {
-        length: 26
-      },
-      () => ({
-        x:
-          Math.random() *
-          innerWidth,
-
-        y:
-          Math.random() *
-          innerHeight,
-
-        s:
-          Math.random() * 2 +
-          0.5,
-
-        a:
-          Math.random() * 0.25 +
-          0.04,
-
-        t:
-          Math.random() > 0.5
-            ? 'X'
-            : 'O'
-      })
-    );
+  particles = Array.from({length:12},()=>({
+    x:Math.random()*canvas.width,
+    y:Math.random()*canvas.height,
+    r:Math.random()*2 + 1,
+    vx:(Math.random()-.5)*.25,
+    vy:(Math.random()-.5)*.25,
+    a:Math.random()*.45 + .15
+  }));
 }
 
-function drawBg() {
-  ctx.clearRect(
-    0,
-    0,
-    innerWidth,
-    innerHeight
-  );
-
-  const primary =
-    getComputedStyle(
-      document.documentElement
-    )
-      .getPropertyValue(
-        '--primary'
-      )
-      .trim() ||
-    '#22d3ee';
-
-  ctx.fillStyle =
-    primary;
-
-  particles.forEach(
-    particle => {
-      particle.y -=
-        particle.s;
-
-      if (
-        particle.y < -30
-      ) {
-        particle.y =
-          innerHeight + 30;
-      }
-
-      ctx.globalAlpha =
-        particle.a;
-
-      ctx.font =
-        '900 22px system-ui';
-
-      ctx.fillText(
-        particle.t,
-        particle.x,
-        particle.y
-      );
-    }
-  );
-
-  ctx.globalAlpha = 1;
-
-  requestAnimationFrame(
-    drawBg
-  );
-}
-
-addEventListener(
-  'resize',
-  resizeCanvas
-);
-
-resizeCanvas();
-drawBg();
-
-
-//#region ======================================================
-// 18 - تشغيل التطبيق والتهيئة النهائية
-//#endregion ===================================================
-
-function start() {
-  setupAuth();
-
-  if (location.hash) {
-    const route =
-      location.hash.slice(1);
-
-    if (
-      [
-        'home',
-        'play',
-        'online',
-        'leaderboard',
-        'profile',
-        'rules'
-      ].includes(route)
-    ) {
-      currentRoute =
-        route;
-    }
+function drawBg(now=0){
+  if(now - bgLast < 33){
+    requestAnimationFrame(drawBg);
+    return;
   }
 
-  if (window.db) {
-    resumeSession();
+  bgLast = now;
 
-  } else {
-    window.addEventListener(
-      'firebase-ready',
-      resumeSession,
-      {
-        once: true
-      }
-    );
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  for(const p of particles){
+    p.x += p.vx;
+    p.y += p.vy;
+
+    if(p.x < -10) p.x = canvas.width + 10;
+    if(p.x > canvas.width + 10) p.x = -10;
+
+    if(p.y < -10) p.y = canvas.height + 10;
+    if(p.y > canvas.height + 10) p.y = -10;
+
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    ctx.fillStyle = `rgba(56,189,248,${p.a})`;
+    ctx.fill();
+  }
+
+  requestAnimationFrame(drawBg);
+}
+//#endregion
+
+
+//#region START
+async function boot(){
+  applyTheme(loadTheme());
+  bindGlobalEvents();
+  resizeCanvas();
+
+  window.addEventListener("resize",resizeCanvas);
+  requestAnimationFrame(drawBg);
+
+  setAuthMode("login");
+
+  const restored = await restoreSession();
+
+  if(!restored){
+    $("authScreen").classList.remove("hidden");
+    $("app").classList.add("hidden");
   }
 }
 
-start();
-
-
-//#endregion ===================================================
+if(window.db){
+  boot();
+}else{
+  window.addEventListener("firebase-ready",boot,{once:true});
+}
+//#endregion
 
 })();

@@ -55,8 +55,8 @@ let boardWins = Array(9).fill(null), boardStates = Array(9).fill().map(() => Arr
 let activeBoardIndex = -1, currentPlayer = 'X', scores = { X: 0, O: 0 }, lastMove = null, isUI_Locked = false;
 let userStats = { points: 0, wins: 0, losses: 0, history: [] };
 
-let matchListener = null, challengeListener = null, turnTimerInt = null;
-const TURN_TIME_LIMIT = 120; let emojiCooldown = false;
+let matchListener = null, challengeListener = null;
+let emojiCooldown = false;
 
 const getEl = id => document.getElementById(id);
 function showCustomAlert(title, text) {
@@ -88,6 +88,7 @@ function navigate(hash) {
     if (hash === '#menu') updateMenuData();
     if (hash === '#lobby') fetchOnlinePlayers();
     if (hash === '#profile') loadProfileData();
+    if (hash === '#history') loadHistoryData();
     if (hash === '#leaderboard') fetchLeaderboard();
     
     window.location.hash = hash;
@@ -196,7 +197,7 @@ getEl('logoutBtn').onclick = () => showCustomConfirm('Logout', 'Are you sure?', 
 });
 
 // ==========================================
-// 5. Menu, Profile & Leaderboard
+// 5. Menu, Profile, History & Leaderboard
 // ==========================================
 function updateMenuData() { getEl('menuUsername').textContent = playerName; }
 
@@ -211,14 +212,17 @@ function loadProfileData() {
     getEl('statPoints').textContent = userStats.points;
     getEl('statWins').textContent = userStats.wins;
     getEl('statLosses').textContent = userStats.losses;
-    
+}
+
+function loadHistoryData() {
     const hl = getEl('matchHistoryList'); hl.innerHTML = '';
-    if(!userStats.history || userStats.history.length === 0) hl.innerHTML = '<p class="text-slate-500 text-center py-2">No matches yet.</p>';
-    else {
-        [...userStats.history].reverse().slice(0,5).forEach(m => {
-            hl.innerHTML += `<li class="flex justify-between items-center bg-black/40 p-2 rounded-lg border border-white/5"><span class="${m.res==='Win'?'text-emerald-400':m.res==='Loss'?'text-rose-400':'text-amber-400'} font-bold">${m.res}</span> <span class="text-slate-300">vs ${m.opp}</span></li>`;
-        });
+    if(!userStats.history || userStats.history.length === 0) {
+        hl.innerHTML = '<p class="text-slate-500 text-center py-6 text-xs">No matches recorded yet.</p>';
+        return;
     }
+    [...userStats.history].reverse().forEach(m => {
+        hl.innerHTML += `<li class="flex justify-between items-center bg-black/40 p-3 rounded-xl border border-white/5 text-xs"><span class="${m.res==='Win'?'text-emerald-400':m.res==='Loss'?'text-rose-400':'text-amber-400'} font-bold">${m.res}</span> <span class="text-slate-300">vs ${m.opp}</span></li>`;
+    });
 }
 
 getEl('updatePinBtn').onclick = () => {
@@ -252,7 +256,7 @@ function fetchLeaderboard() {
         const arr = Object.values(p).filter(x=>x.name).sort((a,b)=>(b.points||0)-(a.points||0)).slice(0,10);
         const list = getEl('leaderboardList'); list.innerHTML = '';
         arr.forEach((x, i) => {
-            list.innerHTML += `<div class="flex justify-between p-3 border-b border-white/10 last:border-0 items-center bg-black/20 rounded-lg mb-1"><span class="font-bold"><span class="text-slate-400 mr-2">#${i+1}</span> ${x.name}</span> <span class="text-amber-400 font-black">${x.points||0}</span></div>`;
+            list.innerHTML += `<div class="flex justify-between p-3 border-b border-white/10 last:border-0 items-center bg-black/20 rounded-lg mb-1 text-xs"><span class="font-bold"><span class="text-slate-400 mr-2">#${i+1}</span> ${x.name}</span> <span class="text-amber-400 font-black">${x.points||0}</span></div>`;
         });
     }, {onlyOnce: true});
 }
@@ -279,7 +283,7 @@ function fetchOnlinePlayers() {
             if(c.key === playerId) return;
             let u = c.val(); if(u.status === 'offline') return; found = true;
             let isIngame = u.status === 'in-game';
-            list.innerHTML += `<div class="flex justify-between items-center p-3 bg-black/40 rounded-xl border border-white/10 text-sm">
+            list.innerHTML += `<div class="flex justify-between items-center p-3 bg-black/40 rounded-xl border border-white/10 text-xs">
                 <span class="font-bold capitalize truncate max-w-[120px]"><span class="${isIngame?'text-rose-500':'text-emerald-500'}">●</span> ${u.name}</span>
                 ${isIngame ? `<span class="text-[10px] text-rose-400 border border-rose-500/30 px-2 py-1 rounded bg-rose-900/30">In-Game</span>` 
                            : `<button onclick="sendChallenge('${c.key}', '${u.name}')" class="bg-cyan-700 hover:bg-cyan-600 px-3 py-1.5 rounded-lg font-bold text-xs shadow-md cursor-pointer">Challenge</button>`}
@@ -410,6 +414,17 @@ function handleRoundEnd(winner) {
     if(winner && winner !== 'DRAW') scores[winner]++;
     let cupWon = winner && winner !== 'DRAW' && scores[winner] >= targetWins;
     
+    // Save to Stats
+    if(cupWon || currentFormat === '1') {
+        let isMe = gameMode==='online' ? winner===myRole : winner==='X';
+        if(winner !== 'DRAW') {
+            if(isMe) userStats.wins++; else userStats.losses++;
+        }
+        userStats.points += isMe ? 3 : winner==='DRAW' ? 1 : Math.max(0, userStats.points - 1);
+        userStats.history.push({res: winner==='DRAW' ? 'Draw' : isMe ? 'Win' : 'Loss', opp: opponentName});
+        if(window.db && playerId) window.dbUpdate(window.dbRef(window.db, `players/${playerId}`), userStats);
+    }
+    
     isUI_Locked = true;
     if(winner && winner!=='DRAW') playSound(cupWon && (gameMode==='online'?winner===myRole:winner==='X') ? 'win':'lose');
     else playSound('bell');
@@ -502,11 +517,9 @@ function startOnlineMatch(mId, role, oppName, oppId, format) {
         activeBoardIndex = d.activeBoardIndex; currentPlayer = d.currentPlayer;
         lastMove = d.lastMove || null; scores = d.scores || {X:0,O:0};
         
-        // Two-way Handshake for Rematch / Reset
         if(d.rematch) {
             let r = d.rematch;
             if(r.X && r.O) {
-                // Both ready! Reset board
                 if(myRole === 'X') {
                     window.dbUpdate(window.dbRef(window.db, `matches/${mId}`), {
                         boardStates: JSON.stringify(Array(9).fill().map(()=>Array(9).fill(''))),

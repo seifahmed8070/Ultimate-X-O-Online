@@ -175,46 +175,68 @@ let scores = {
     O: 0
 };
 
-let lastMove = null;
-let isUI_Locked = false;
+async function initializeFirebaseSession() {
+    if (!window.db) return;
 
-let userStats = {
-    points: 0,
-    wins: 0,
-    losses: 0,
-    history: []
-};
+    if (!playerId) {
+        navigate('#login');
+        return;
+    }
 
-let matchListener = null;
-let challengeListener = null;
-let challengeRequestListener = null;
+    try {
+        const snap = await window.dbGet(
+            window.dbRef(window.db, `players/${playerId}`)
+        );
 
-let lobbyListener = null;
-let challengeResponseListener = null;
+        if (!snap.exists() || snap.val().pin !== playerPin) {
+            localStorage.clear();
 
-let presenceHeartbeat = null;
-let turnTimerInterval = null;
+            playerId = null;
+            playerName = '';
+            playerPin = '';
 
-let emojiCooldown = false;
+            navigate('#login');
+            return;
+        }
 
-let lastHandledResultId = null;
-let lastResetRequest = null;
+        const d = snap.val() || {};
 
-let matchResultShown = false;
-let matchResultData = null;
+        userStats = {
+            points: d.points || 0,
+            wins: d.wins || 0,
+            losses: d.losses || 0,
+            history: d.history || []
+        };
 
-let lastEmojiTime = 0;
+        // تشغيل الـ Presence والـ Challenge Listener
+        setupPresence();
 
-let presenceUpdater = null;
+        await processPendingResults(true);
 
-let opponentPresenceListener = null;
-let disconnectGraceInterval = null;
-let opponentOfflineSince = 0;
+        navigate(window.location.hash || '#menu');
 
-const getEl = id =>
-    document.getElementById(id);
+    } catch (err) {
+        console.error('Firebase session init failed:', err);
 
+        showCustomAlert(
+            'Connection Error',
+            'Could not connect to the game server. Please refresh and try again.'
+        );
+    }
+}
 
+// Firebase ممكن يكون جهز قبل تحميل script.js
+// لذلك نفحص window.db مباشرة.
+if (window.db) {
+    initializeFirebaseSession();
+} else {
+    // ولو Firebase لسه ما جهزش، نستنى الحدث.
+    window.addEventListener(
+        'firebase-ready',
+        initializeFirebaseSession,
+        { once: true }
+    );
+}
 // ==========================================
 // 4. Custom Modals
 // ==========================================

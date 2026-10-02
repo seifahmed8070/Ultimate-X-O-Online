@@ -2,14 +2,14 @@
 <html lang="en" id="htmlRoot" class="theme-cyberpunk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultimate X O | Online Arena</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ultimate X O | Pro Arena</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="style.css">
+    <!-- Firebase SDK -->
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-      import { getDatabase, ref, set, onValue, update, remove, onDisconnect, get, child } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
-      
+      import { getDatabase, ref, set, onValue, update, remove, onDisconnect, get } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
       const firebaseConfig = {
         apiKey: "AIzaSyAQLsvV-6roMQOlGkgXPfyC182O4MN6Xgc",
         authDomain: "ultimate-xo-game.firebaseapp.com",
@@ -17,179 +17,27 @@
         projectId: "ultimate-xo-game",
         storageBucket: "ultimate-xo-game.firebasestorage.app",
         messagingSenderId: "812115160959",
-        appId: "1:812115160959:web:02f9639b4f346b3293744a",
-        measurementId: "G-KMGLHNH5MQ"
+        appId: "1:812115160959:web:02f9639b4f346b3293744a"
       };
-
       const app = initializeApp(firebaseConfig);
       window.db = getDatabase(app);
-      window.dbRef = ref;
-      window.dbSet = set;
-      window.dbOnValue = onValue;
-      window.dbUpdate = update;
-      window.dbRemove = remove;
-      window.dbOnDisconnect = onDisconnect;
-      window.dbGet = get;
-      window.dbChild = child;
+      window.dbRef = ref; window.dbSet = set; window.dbOnValue = onValue; window.dbUpdate = update; window.dbRemove = remove; window.dbOnDisconnect = onDisconnect; window.dbGet = get;
       window.dispatchEvent(new Event('firebase-ready'));
     </script>
 </head>
-<body class="app-shell min-h-screen flex flex-col items-center p-3 selection:bg-cyan-500 selection:text-white relative overflow-x-hidden">
+<body class="app-shell min-h-screen flex flex-col items-center p-2 md:p-4 relative overflow-x-hidden select-none">
+    
+    <!-- Background Canvas (Particles & Confetti) -->
+    <canvas id="bgCanvas" class="fixed inset-0 z-0 pointer-events-none"></canvas>
 
-    <!-- الخلفية المتحركة -->
-    <canvas id="bgCanvas"></canvas>
-
-    <!-- نافذة انقطاع الاتصال (Disconnect Timer) -->
-    <div id="disconnectModal" class="fixed inset-0 bg-black/90 z-[70] hidden items-center justify-center p-4 backdrop-blur-md">
-        <div class="modal-box border border-rose-500/50 p-8 rounded-3xl max-w-sm w-full text-center shadow-[0_0_40px_rgba(225,29,72,0.2)] relative z-10">
-            <div class="animate-pulse text-rose-500 text-5xl mb-3">⚠️</div>
-            <h2 class="font-black text-xl text-rose-400 mb-2">Opponent Disconnected!</h2>
-            <p class="text-sm text-slate-200 mb-4">Waiting for them to reconnect...</p>
-            <div class="text-5xl font-black text-white mb-6" id="disconnectTimer">30</div>
-            <button id="forceLeaveBtn" class="w-full py-3.5 rounded-2xl font-bold text-sm bg-rose-600 hover:bg-rose-500 text-white shadow-lg transition-all cursor-pointer">Leave Match</button>
-        </div>
-    </div>
-
-    <!-- نافذة طلب إعادة الجولة -->
-    <div id="resetRequestModal" class="fixed inset-0 bg-black/80 z-[60] hidden items-center justify-center p-4 backdrop-blur-md">
-        <div class="modal-box border p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl relative z-10">
-            <h2 class="font-black text-xl text-cyan-400 mb-2">🔄 Restart Request</h2>
-            <p class="text-sm text-slate-200 mb-6 font-semibold">Your opponent wants to restart the current board. Do you accept?</p>
-            <div class="flex gap-2.5">
-                <button id="acceptResetBtn" class="w-full py-3.5 rounded-2xl font-bold text-sm bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg transition-all cursor-pointer">Accept</button>
-                <button id="declineResetBtn" class="w-full py-3.5 rounded-2xl font-bold text-sm bg-rose-600 hover:bg-rose-500 text-white shadow-lg transition-all cursor-pointer">Decline</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- تسجيل الدخول -->
-    <div id="nameModal" class="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 backdrop-blur-md">
-        <div class="modal-box border p-8 rounded-3xl max-w-md w-full text-center shadow-2xl flex flex-col gap-4 relative z-10">
-            <h2 id="authModalTitle" class="modal-title font-black text-3xl mb-1 tracking-wider bg-gradient-to-r from-cyan-400 to-teal-300 bg-clip-text text-transparent">Player Login</h2>
-            <p id="authModalDesc" class="text-sm mb-4 text-slate-300">Enter your lowercase username (no spaces) & 4-digit PIN:</p>
-            <form id="nameForm" action="#" method="post" onsubmit="return false;" class="flex flex-col gap-3.5">
-                <input type="text" id="playerNameInput" autocomplete="off" placeholder="username (lowercase, no spaces)" class="input-field w-full px-5 py-3.5 rounded-2xl text-center font-bold text-base shadow-inner lowercase focus:outline-none">
-                <input type="password" id="playerPinInput" autocomplete="off" maxlength="4" pattern="[0-9]*" inputmode="numeric" placeholder="4-Digit PIN (e.g. 1234)" class="input-field w-full px-5 py-3.5 rounded-2xl text-center font-bold text-lg tracking-widest shadow-inner focus:outline-none">
-                <button type="button" id="authSubmitBtn" class="action-btn w-full py-4 rounded-2xl font-black text-base uppercase tracking-wider shadow-lg transition-all mt-2 cursor-pointer">Login</button>
-                <button type="button" id="authSwitchBtn" class="text-xs text-cyan-400 hover:underline mt-2 font-bold cursor-pointer">Don't have an account? Create one</button>
-            </form>
-        </div>
-    </div>
-
-    <!-- اختيار البوت -->
-    <div id="aiDifficultyModal" class="fixed inset-0 bg-black/75 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
-        <div class="modal-box border p-8 rounded-3xl max-w-md w-full text-center shadow-2xl flex flex-col gap-4 relative z-10">
-            <h2 class="modal-title font-black text-xl mb-1 text-purple-300">Select AI Difficulty</h2>
-            <button data-level="easy" class="ai-diff-btn w-full bg-slate-900/90 hover:bg-slate-800 border border-emerald-500/30 text-emerald-300 font-bold py-3.5 rounded-2xl text-sm transition-all cursor-pointer">🟢 Easy Bot</button>
-            <button data-level="medium" class="ai-diff-btn w-full bg-slate-900/90 hover:bg-slate-800 border border-cyan-500/30 text-cyan-300 font-bold py-3.5 rounded-2xl text-sm transition-all cursor-pointer">🟡 Medium Bot</button>
-            <button data-level="impossible" class="ai-diff-btn w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold py-3.5 rounded-2xl text-sm shadow-lg transition-all border border-purple-400 cursor-pointer">🔴 Grandmaster AI (Impossible)</button>
-            <button id="cancelAiModalBtn" class="w-full bg-slate-900/90 hover:bg-slate-800 text-slate-400 font-bold py-3 rounded-2xl text-xs mt-2 border border-white/10 cursor-pointer">Cancel</button>
-        </div>
-    </div>
-
-    <!-- اللوبي -->
-    <div id="onlineLobbyModal" class="fixed inset-0 bg-black/75 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
-        <div class="modal-box border p-8 rounded-3xl max-w-lg w-full text-center shadow-2xl flex flex-col gap-4 max-h-[85vh] overflow-y-auto relative z-10">
-            <div class="flex justify-between items-center">
-                <h2 class="font-black text-xl brand-title uppercase">🌐 Live Online Arena</h2>
-                <button id="refreshLobbyBtn" class="text-xs px-3.5 py-2 rounded-xl sub-box border font-bold transition-all cursor-pointer">🔄 Refresh</button>
-            </div>
-            <p class="text-xs text-slate-300">Players online right now. Click any player to challenge them!</p>
-            <div id="onlinePlayersList" class="flex flex-col gap-2.5 my-2 text-left max-h-56 overflow-y-auto p-3 sub-box border rounded-2xl">
-                <p class="text-xs text-center text-slate-400 py-6">Searching for online players...</p>
-            </div>
-            <button id="closeOnlineLobbyBtn" class="w-full bg-rose-600/80 hover:bg-rose-600 text-white font-bold py-3.5 rounded-2xl text-sm shadow-lg transition-all cursor-pointer">Back to Menu</button>
-        </div>
-    </div>
-
-    <!-- التحدي -->
-    <div id="challengeModal" class="fixed inset-0 bg-black/75 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
-        <div class="modal-box border p-8 rounded-3xl max-w-md w-full text-center shadow-2xl flex flex-col gap-4 relative z-10">
-            <h2 id="challengeTitle" class="font-black text-xl text-cyan-300">Incoming Challenge!</h2>
-            <p id="challengeText" class="text-sm text-slate-200">Player X has challenged you to a match.</p>
-            <div id="challengeActionButtons" class="flex gap-3">
-                <button id="acceptChallengeBtn" class="w-full py-3.5 rounded-2xl font-bold text-sm bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg transition-all cursor-pointer">Accept</button>
-                <button id="rejectChallengeBtn" class="w-full py-3.5 rounded-2xl font-bold text-sm bg-rose-600 hover:bg-rose-500 text-white shadow-lg transition-all cursor-pointer">Decline</button>
-            </div>
-            <button id="cancelChallengeBtn" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-2xl text-xs hidden border border-white/10 cursor-pointer">Cancel Request</button>
-        </div>
-    </div>
-
-    <!-- القواعد -->
-    <div id="rulesModal" class="fixed inset-0 bg-black/75 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
-        <div class="modal-box border p-8 rounded-3xl max-w-md w-full text-center shadow-2xl flex flex-col gap-4 relative z-10">
-            <h2 class="font-black text-xl text-cyan-400">📜 Game Rules</h2>
-            <p class="text-sm text-left leading-relaxed text-slate-200">
-                1. Each move sends your opponent to the corresponding local board.<br>
-                2. Win 3 local boards in a row to win the ultimate match!<br>
-                3. +3 Points for Win, +1 for Draw, -1 for Loss.
-            </p>
-            <button id="closeRulesBtn" class="action-btn w-full py-3.5 rounded-2xl font-bold text-sm mt-2 transition-all shadow-lg cursor-pointer">Got it</button>
-        </div>
-    </div>
-
-    <!-- المنيو الرئيسي -->
-    <div id="mainMenu" class="fixed inset-0 bg-black/75 z-40 flex items-center justify-center p-4 backdrop-blur-md">
-        <div class="modal-box border p-8 rounded-3xl max-w-md w-full text-center shadow-2xl flex flex-col gap-5 relative overflow-hidden z-10">
-            <div class="absolute -top-16 -right-16 w-40 h-40 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
-            <div class="absolute -bottom-16 -left-16 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-            <div>
-                <h1 class="text-4xl font-black tracking-widest uppercase brand-title drop-shadow-md mb-2">Ultimate X/O</h1>
-                <p class="text-sm text-slate-200 tracking-wide">Welcome, <span id="menuUsername" class="font-bold text-cyan-300">Player</span> | Points: <span id="userPoints" class="text-emerald-400 font-bold">10</span></p>
-            </div>
-
-            <div class="sub-box border p-4 rounded-2xl text-left shadow-inner">
-                <label class="text-xs font-bold text-cyan-400 uppercase tracking-wider block mb-1.5">🏆 Cup Format:</label>
-                <select id="matchFormatSelect" class="input-field w-full rounded-xl text-sm font-bold p-3 focus:outline-none transition-all cursor-pointer">
-                    <option value="1">Single Match (1 Win)</option>
-                    <option value="3">Best of 3 Cup (First to 2)</option>
-                    <option value="5">Best of 5 Cup (First to 3)</option>
-                    <option value="infinity">Endless (Free Play)</option>
-                </select>
-            </div>
-
-            <div class="flex flex-col gap-3">
-                <button id="onlineLobbyMenuBtn" class="action-btn w-full py-4 px-6 rounded-2xl font-black text-base uppercase tracking-wider shadow-lg transition-all border cursor-pointer">🌐 Online Live Arena</button>
-                <button id="pveMenuBtn" class="w-full py-3.5 px-6 rounded-2xl font-bold text-sm uppercase tracking-wider text-slate-200 bg-slate-900/90 hover:bg-slate-800 border border-purple-500/30 hover:border-purple-400 transition-all shadow-md cursor-pointer">🤖 Play vs AI Bot</button>
-            </div>
-
-            <div class="grid grid-cols-2 gap-3 pt-2 border-t border-white/10">
-                <button id="statsMenuBtn" class="py-3 px-4 rounded-xl font-bold text-xs text-slate-200 bg-black/50 hover:bg-slate-900 border border-white/10 transition-all cursor-pointer">📊 Profile</button>
-                <button id="menuRulesBtn" class="py-3 px-4 rounded-xl font-bold text-xs text-slate-200 bg-black/50 hover:bg-slate-900 border border-white/10 transition-all cursor-pointer">📜 Rules</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- البروفايل -->
-    <div id="statsModal" class="fixed inset-0 bg-black/75 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
-        <div class="modal-box border p-8 rounded-3xl max-w-md w-full text-center shadow-2xl max-h-[90vh] overflow-y-auto relative z-10">
-            <h2 class="font-bold text-xl mb-4 text-cyan-400">Player Profile & Stats</h2>
-            <div class="flex flex-col gap-3 text-xs mb-5 text-right">
-                <div class="sub-box border flex justify-between p-3.5 rounded-2xl">
-                    <span class="text-slate-300">Player Name:</span> <span id="profileNameDisplay" class="font-bold text-cyan-400 text-sm">--</span>
-                </div>
-                <div class="sub-box border flex justify-between p-3.5 rounded-2xl">
-                    <span class="text-slate-300">Total Arena Points:</span> <span id="statPoints" class="font-bold text-emerald-400 text-base">0</span>
-                </div>
-                <div class="sub-box border flex justify-between p-3.5 rounded-2xl">
-                    <span class="text-slate-300">Total Matches Played:</span> <span id="statTotal" class="font-bold text-slate-200 text-sm">0</span>
-                </div>
-            </div>
-            <button id="logoutBtn" class="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3.5 rounded-2xl text-xs mb-2.5 shadow-lg transition-all cursor-pointer">🚪 Logout (Sign Out)</button>
-            <button id="deleteAccountBtn" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-3.5 rounded-2xl text-xs mb-3 shadow-lg transition-all cursor-pointer">🗑️️ Delete Account</button>
-            <button id="closeStatsBtn" class="w-full py-3.5 rounded-2xl font-bold text-xs bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/10 transition-all cursor-pointer">Back to Menu</button>
-        </div>
-    </div>
-
-    <header class="header-bar border w-full max-w-lg flex justify-between items-center px-3 py-2 rounded-2xl shadow-lg relative z-10">
+    <!-- UI Header -->
+    <header id="mainHeader" class="header-bar w-full max-w-2xl flex justify-between items-center px-4 py-3 rounded-2xl shadow-lg relative z-10 hidden">
         <div>
-            <h1 class="text-xl md:text-2xl font-black brand-title tracking-wider uppercase text-left cursor-pointer" id="backToMenuHeader">Ultimate X/O</h1>
+            <h1 class="text-xl md:text-2xl font-black brand-title tracking-wider uppercase">Ultimate X/O</h1>
             <p class="text-[10px] md:text-xs text-left mt-0.5 opacity-80"><span id="gameModeBadge" class="font-bold text-cyan-400">Offline Mode</span></p>
         </div>
         <div class="flex items-center gap-2">
-            <button id="homeBtn" class="theme-select text-xs font-bold px-3 py-2 rounded-xl shadow-md transition-all cursor-pointer border hover:bg-white/5">🏠 Menu</button>
-            <select id="themeSelector" class="theme-select text-xs font-bold px-3 py-2 rounded-xl shadow-md transition-all cursor-pointer focus:outline-none border hover:bg-white/5">
+            <select id="themeSelector" class="theme-select text-xs font-bold px-3 py-2 rounded-xl shadow-md transition-all cursor-pointer border focus:outline-none">
                 <option value="theme-cyberpunk">⚡ Cyberpunk</option>
                 <option value="theme-matrix">🟢 Matrix</option>
                 <option value="theme-obsidian">🖤 Obsidian</option>
@@ -198,37 +46,236 @@
         </div>
     </header>
 
-    <div class="w-full max-w-lg control-panel border px-3 py-2 rounded-xl shadow-lg flex flex-col mt-2 relative z-10">
-        <div class="flex flex-wrap justify-between items-center gap-2">
-            <!-- لمبة الاتصال للأونلاين -->
-            <div id="connectionStatus" class="hidden items-center gap-1.5 text-[10px] md:text-xs font-bold sub-box px-2.5 py-1.5 rounded-lg border">
-                <span class="w-2 h-2 rounded-full bg-emerald-500" id="connDot"></span>
-                <span id="connText">Online</span>
+    <!-- VIEWS CONTAINER -->
+    <div id="viewsContainer" class="w-full max-w-2xl relative z-10 mt-3 flex-1 flex flex-col">
+        
+        <!-- 1. LOGIN VIEW -->
+        <div id="view-login" class="view-section hidden flex-col items-center justify-center flex-1">
+            <div class="modal-box border p-8 rounded-3xl w-full max-w-md text-center shadow-2xl relative">
+                <h2 id="authModalTitle" class="font-black text-3xl mb-1 brand-title uppercase">Player Login</h2>
+                <p id="authModalDesc" class="text-xs mb-5 text-slate-300">Enter a lowercase username (spaces allowed) & 4-digit PIN</p>
+                <form id="authForm" onsubmit="return false;" class="flex flex-col gap-4">
+                    <input type="text" id="playerNameInput" autocomplete="off" placeholder="username (e.g. ahmed ali)" class="input-field w-full px-5 py-4 rounded-2xl text-center font-bold text-base lowercase focus:outline-none">
+                    <div class="relative">
+                        <input type="text" id="playerPinInput" autocomplete="off" maxlength="4" placeholder="4-Digit PIN" class="password-disc input-field w-full px-5 py-4 rounded-2xl text-center font-bold text-xl tracking-widest focus:outline-none">
+                        <button type="button" id="togglePinBtn" class="absolute right-4 top-1/2 -translate-y-1/2 text-xl opacity-70 hover:opacity-100 cursor-pointer">👁️</button>
+                    </div>
+                    <button type="button" id="authSubmitBtn" class="action-btn w-full py-4 rounded-2xl font-black text-base uppercase shadow-lg mt-2 cursor-pointer">Login</button>
+                </form>
+                <div class="flex justify-between mt-4 px-2">
+                    <button id="authSwitchBtn" class="text-xs text-cyan-400 hover:underline font-bold cursor-pointer">Create Account</button>
+                    <a href="mailto:admin@ultimatexo.com?subject=Password%20Reset%20Request" class="text-xs text-rose-400 hover:underline font-bold">Forgot PIN?</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. MENU VIEW -->
+        <div id="view-menu" class="view-section hidden flex-col items-center justify-center flex-1">
+            <div class="modal-box border p-8 rounded-3xl w-full max-w-md text-center shadow-2xl relative overflow-hidden">
+                <h1 class="text-4xl font-black tracking-widest uppercase brand-title drop-shadow-md mb-2">ARENA</h1>
+                <p class="text-sm text-slate-200 tracking-wide mb-6">Welcome, <span id="menuUsername" class="font-bold text-cyan-300 uppercase">--</span></p>
+                
+                <div class="sub-box border p-4 rounded-2xl text-left shadow-inner mb-5">
+                    <label class="text-xs font-bold text-cyan-400 uppercase tracking-wider block mb-2">🏆 Match Format:</label>
+                    <select id="matchFormatSelect" class="input-field w-full rounded-xl text-sm font-bold p-3 focus:outline-none cursor-pointer">
+                        <option value="1">Single Match (1 Win)</option>
+                        <option value="3">Best of 3 Cup (First to 2)</option>
+                        <option value="5">Best of 5 Cup (First to 3)</option>
+                    </select>
+                </div>
+
+                <div class="flex flex-col gap-3">
+                    <button onclick="navigate('#lobby')" class="action-btn w-full py-4 rounded-2xl font-black text-base uppercase shadow-lg cursor-pointer">🌐 Online Lobby</button>
+                    <button onclick="navigate('#pve')" class="w-full py-3.5 rounded-2xl font-bold text-sm uppercase text-slate-200 bg-slate-900 border border-purple-500/50 shadow-md cursor-pointer hover:bg-slate-800">🤖 Play vs AI</button>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 pt-4 mt-4 border-t border-white/10">
+                    <button onclick="navigate('#profile')" class="py-3 rounded-xl font-bold text-[11px] text-slate-200 bg-black/50 border border-white/10 hover:bg-slate-900 cursor-pointer uppercase">Profile</button>
+                    <button onclick="navigate('#leaderboard')" class="py-3 rounded-xl font-bold text-[11px] text-slate-200 bg-black/50 border border-white/10 hover:bg-slate-900 cursor-pointer uppercase">Rankings</button>
+                    <button onclick="navigate('#rules')" class="py-3 rounded-xl font-bold text-[11px] text-slate-200 bg-black/50 border border-white/10 hover:bg-slate-900 cursor-pointer uppercase">Rules</button>
+                </div>
+                <button id="logoutBtn" class="w-full mt-3 py-3 rounded-xl font-bold text-xs bg-rose-900/50 text-rose-300 border border-rose-500/30 hover:bg-rose-800 cursor-pointer">Log Out</button>
+            </div>
+        </div>
+
+        <!-- 3. PvE SELECT VIEW -->
+        <div id="view-pve" class="view-section hidden flex-col items-center justify-center flex-1">
+            <div class="modal-box border p-8 rounded-3xl w-full max-w-md text-center shadow-2xl">
+                <h2 class="font-black text-xl mb-4 text-purple-300 uppercase tracking-widest">Select AI Level</h2>
+                <div class="flex flex-col gap-3">
+                    <button data-level="easy" class="ai-diff-btn w-full bg-slate-900 border border-emerald-500/30 text-emerald-300 font-bold py-4 rounded-2xl cursor-pointer">🟢 Easy Bot</button>
+                    <button data-level="medium" class="ai-diff-btn w-full bg-slate-900 border border-cyan-500/30 text-cyan-300 font-bold py-4 rounded-2xl cursor-pointer">🟡 Medium Bot</button>
+                    <button data-level="impossible" class="ai-diff-btn w-full bg-gradient-to-r from-purple-700 to-indigo-700 text-white font-bold py-4 rounded-2xl shadow-lg border border-purple-400 cursor-pointer">🔴 Grandmaster (Impossible)</button>
+                </div>
+                <button onclick="navigate('#menu')" class="w-full mt-4 py-3 rounded-2xl font-bold text-xs bg-black/50 text-slate-400 border border-white/10 cursor-pointer">Back to Menu</button>
+            </div>
+        </div>
+
+        <!-- 4. LOBBY VIEW -->
+        <div id="view-lobby" class="view-section hidden flex-col items-center flex-1">
+            <div class="modal-box border p-6 rounded-3xl w-full max-w-xl shadow-2xl flex flex-col h-full max-h-[80vh]">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="font-black text-xl brand-title uppercase">Live Arena</h2>
+                    <div class="flex gap-2">
+                        <button id="refreshLobbyBtn" class="px-4 py-2 text-xs rounded-xl sub-box border font-bold cursor-pointer">🔄 Refresh</button>
+                        <button onclick="navigate('#menu')" class="px-4 py-2 text-xs rounded-xl bg-rose-600/20 text-rose-400 border border-rose-500/30 font-bold cursor-pointer">Back</button>
+                    </div>
+                </div>
+                <div id="onlinePlayersList" class="flex-1 overflow-y-auto sub-box border rounded-2xl p-3 flex flex-col gap-2">
+                    <!-- Players injected here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. PROFILE VIEW -->
+        <div id="view-profile" class="view-section hidden flex-col items-center flex-1">
+            <div class="modal-box border p-6 rounded-3xl w-full max-w-md shadow-2xl flex flex-col">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="font-black text-xl text-cyan-400 uppercase">Profile</h2>
+                    <button onclick="navigate('#menu')" class="px-4 py-2 text-xs rounded-xl bg-slate-800 text-white border border-white/10 font-bold cursor-pointer">Back</button>
+                </div>
+                
+                <div class="sub-box border p-4 rounded-2xl mb-4 text-center">
+                    <h3 id="profileNameDisplay" class="text-2xl font-black text-white uppercase tracking-wider">--</h3>
+                    <p class="text-sm text-slate-400 font-bold mt-1">Title: <span id="profileRankTitle" class="text-amber-400">Rookie</span></p>
+                    <div class="mt-4 flex justify-around text-xs font-bold bg-black/40 p-3 rounded-xl border border-white/5">
+                        <div class="text-center">Points<br><span id="statPoints" class="text-emerald-400 text-lg">0</span></div>
+                        <div class="text-center">Wins<br><span id="statWins" class="text-cyan-400 text-lg">0</span></div>
+                        <div class="text-center">Losses<br><span id="statLosses" class="text-rose-400 text-lg">0</span></div>
+                    </div>
+                </div>
+
+                <div class="sub-box border p-4 rounded-2xl mb-4">
+                    <h4 class="text-xs font-bold text-slate-300 uppercase mb-3">Security & Updates</h4>
+                    <input type="text" id="updateOldPin" class="password-disc input-field w-full px-4 py-2 rounded-xl text-center text-sm font-bold mb-2" placeholder="Current PIN (To verify)">
+                    <input type="text" id="updateNewPin" class="password-disc input-field w-full px-4 py-2 rounded-xl text-center text-sm font-bold mb-2" placeholder="New 4-Digit PIN">
+                    <button id="updatePinBtn" class="w-full py-2.5 rounded-xl font-bold text-xs bg-cyan-700 hover:bg-cyan-600 text-white cursor-pointer">Change PIN</button>
+                </div>
+
+                <div class="sub-box border p-4 rounded-2xl flex-1 overflow-y-auto">
+                    <h4 class="text-xs font-bold text-slate-300 uppercase mb-2">Recent Matches</h4>
+                    <ul id="matchHistoryList" class="text-xs flex flex-col gap-2">
+                        <!-- History injected here -->
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6. LEADERBOARD VIEW -->
+        <div id="view-leaderboard" class="view-section hidden flex-col items-center flex-1">
+            <div class="modal-box border p-6 rounded-3xl w-full max-w-md shadow-2xl flex flex-col h-full max-h-[80vh]">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="font-black text-xl text-amber-400 uppercase">Top 10 Global</h2>
+                    <button onclick="navigate('#menu')" class="px-4 py-2 text-xs rounded-xl bg-slate-800 text-white border border-white/10 font-bold cursor-pointer">Back</button>
+                </div>
+                <div id="leaderboardList" class="flex-1 overflow-y-auto sub-box border rounded-2xl p-2 flex flex-col gap-1">
+                    <!-- Leaderboard injected here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 7. RULES VIEW -->
+        <div id="view-rules" class="view-section hidden flex-col items-center flex-1">
+            <div class="modal-box border p-6 rounded-3xl w-full max-w-md shadow-2xl flex flex-col">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="font-black text-xl text-cyan-400 uppercase">How to Play</h2>
+                    <button onclick="navigate('#menu')" class="px-4 py-2 text-xs rounded-xl bg-slate-800 text-white border border-white/10 font-bold cursor-pointer">Back</button>
+                </div>
+                <div class="sub-box border p-4 rounded-2xl text-sm text-slate-200 leading-relaxed overflow-y-auto">
+                    <p class="mb-3"><strong>1. The Ultimate Board:</strong> It's a large 3x3 grid, where each cell contains a smaller 3x3 grid.</p>
+                    <p class="mb-3"><strong>2. The Catch:</strong> You don't get to pick which small board to play in. The move your opponent makes dictates where you must play next. (e.g., if they play in the Top-Right cell of a small board, you MUST play in the Top-Right small board).</p>
+                    <p class="mb-3"><strong>3. Full/Won Boards:</strong> If you are sent to a small board that is already won or full, you unlock the ability to play anywhere on the entire ultimate board!</p>
+                    <p><strong>4. Winning:</strong> Win 3 small boards in a row to win the Match!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 8. GAME VIEW -->
+        <div id="view-game" class="view-section hidden flex-col items-center flex-1 w-full">
+            
+            <!-- Game Top Bar -->
+            <div class="w-full control-panel border px-3 py-2.5 rounded-2xl shadow-lg flex flex-col gap-2 mb-3">
+                <div class="flex justify-between items-center">
+                    <div id="connectionStatus" class="flex items-center gap-1.5 text-[10px] md:text-xs font-bold sub-box px-3 py-1.5 rounded-lg border">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500" id="connDot"></span>
+                        <span id="connText">Online</span>
+                    </div>
+                    <!-- Turn Timer -->
+                    <div id="turnTimerContainer" class="hidden items-center gap-1.5 text-[10px] md:text-xs font-bold bg-black/50 px-3 py-1.5 rounded-lg border border-amber-500/50 text-amber-400">
+                        ⏱️ <span id="turnTimerText">120</span>s
+                    </div>
+                    <div class="text-xs md:text-sm font-bold sub-box px-3 py-1.5 rounded-lg border">
+                        Turn: <span id="turnIndicator" class="font-extrabold text-base">X</span>
+                    </div>
+                </div>
+                
+                <div class="flex justify-between items-center">
+                    <div class="text-[10px] md:text-xs font-bold sub-box px-3 py-1.5 rounded-lg border">
+                        Score: <span class="cell-x" id="scoreX">0</span> - <span class="cell-o" id="scoreO">0</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="surrenderBtn" class="bg-rose-900/80 hover:bg-rose-800 text-rose-200 border border-rose-500/50 font-bold px-3 py-1.5 rounded-lg shadow text-[10px] md:text-xs cursor-pointer transition-all">Forfeit</button>
+                        <button id="resetMatchBtn" class="bg-amber-700/80 hover:bg-amber-600 text-amber-100 border border-amber-500/50 font-bold px-3 py-1.5 rounded-lg shadow text-[10px] md:text-xs cursor-pointer transition-all">Reset</button>
+                        <button onclick="leaveMatch()" class="bg-slate-700 hover:bg-slate-600 text-white border border-slate-500 font-bold px-3 py-1.5 rounded-lg shadow text-[10px] md:text-xs cursor-pointer transition-all">Exit</button>
+                    </div>
+                </div>
             </div>
 
-            <div class="text-[10px] md:text-xs font-bold sub-box px-2.5 py-1.5 rounded-lg border">Turn: <span id="turnIndicator" class="font-extrabold text-sm md:text-base">X</span></div>
-            <div class="text-[10px] md:text-xs font-bold sub-box px-2.5 py-1.5 rounded-lg border">Score: <span class="score-x" id="scoreX">0</span> - <span class="score-o" id="scoreO">0</span></div>
-            <button id="resetBtn" class="action-btn text-white font-bold px-3 py-1.5 rounded-lg shadow transition-all text-xs cursor-pointer">Restart</button>
+            <!-- Ultimate Board -->
+            <main class="w-full main-board-wrapper p-2 md:p-3 rounded-3xl border-2 shadow-2xl relative aspect-square max-w-[500px]">
+                <div id="ultimateBoard" class="ultimate-grid h-full w-full">
+                    <!-- Generated by JS for DOM performance -->
+                </div>
+            </main>
+
+            <!-- Quick Chat (Emojis) -->
+            <div id="emojiBar" class="mt-4 flex gap-3 hidden">
+                <button class="emoji-btn text-2xl hover:scale-125 transition-transform cursor-pointer drop-shadow-lg">👍</button>
+                <button class="emoji-btn text-2xl hover:scale-125 transition-transform cursor-pointer drop-shadow-lg">😅</button>
+                <button class="emoji-btn text-2xl hover:scale-125 transition-transform cursor-pointer drop-shadow-lg">😡</button>
+                <button class="emoji-btn text-2xl hover:scale-125 transition-transform cursor-pointer drop-shadow-lg">🔥</button>
+                <button class="emoji-btn text-2xl hover:scale-125 transition-transform cursor-pointer drop-shadow-lg">⏳</button>
+            </div>
+            
+            <!-- Floating Emoji Anchor -->
+            <div id="floatingEmoji" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-6xl pointer-events-none opacity-0 transition-all duration-500 z-[100]"></div>
+        </div>
+
+    </div>
+
+    <!-- MODALS (Global) -->
+    <!-- Custom Alert / Confirm Modal -->
+    <div id="customModal" class="fixed inset-0 bg-black/80 z-[100] hidden items-center justify-center p-4 backdrop-blur-sm">
+        <div class="modal-box border p-6 rounded-3xl max-w-sm w-full text-center shadow-2xl flex flex-col gap-4">
+            <h2 id="customModalTitle" class="font-black text-xl text-cyan-400">Notice</h2>
+            <p id="customModalText" class="text-sm text-slate-200 leading-relaxed font-semibold"></p>
+            <div id="customModalButtons" class="flex gap-2 mt-2"></div>
         </div>
     </div>
 
-    <main id="mainBoardContainer" class="w-full max-w-lg main-board-wrapper p-3 rounded-2xl border-2 shadow-xl relative mt-2 z-10">
-        <div id="ultimateBoard" class="ultimate-grid"></div>
-    </main>
+    <!-- Challenge Modal -->
+    <div id="challengeModal" class="fixed inset-0 bg-black/85 z-[90] hidden items-center justify-center p-4 backdrop-blur-md">
+        <div class="modal-box border p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl flex flex-col gap-4">
+            <div class="animate-bounce text-4xl">⚔️</div>
+            <h2 id="challengeTitle" class="font-black text-xl text-amber-400 uppercase">Incoming Challenge!</h2>
+            <p id="challengeText" class="text-sm text-slate-200 font-bold">Player wants to play.</p>
+            <div id="challengeActionButtons" class="flex gap-3 mt-2">
+                <button id="acceptChallengeBtn" class="w-full py-3.5 rounded-2xl font-black text-xs uppercase bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg cursor-pointer">Accept</button>
+                <button id="rejectChallengeBtn" class="w-full py-3.5 rounded-2xl font-black text-xs uppercase bg-rose-600 hover:bg-rose-500 text-white shadow-lg cursor-pointer">Decline</button>
+            </div>
+            <button id="cancelChallengeBtn" class="w-full py-3 rounded-2xl font-bold text-xs bg-slate-800 text-slate-400 border border-white/10 hidden mt-2 cursor-pointer">Cancel Request</button>
+        </div>
+    </div>
 
-    <!-- شاشة الفوز -->
-    <div id="victoryModal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4 backdrop-blur-md">
-        <div class="modal-box border p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl relative z-10">
-            <div id="victoryIcon" class="text-4xl mb-2">🎉</div>
-            <h2 id="victoryTitle" class="font-black text-xl mb-2 tracking-wider text-emerald-400">VICTORY!</h2>
-            <p id="victoryText" class="text-sm mb-6 font-semibold text-slate-200">Player wins!</p>
-            <div id="victoryButtonContainer" class="flex flex-col gap-2.5">
-                <button id="acceptRematchBtn" class="w-full py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider text-white bg-gradient-to-r from-emerald-600 to-teal-600 shadow-lg transition-all cursor-pointer">
-                    ▶️ Ready for Next Round
-                </button>
-                <button id="declineRematchBtn" class="w-full py-3 rounded-2xl font-bold text-xs uppercase tracking-wider text-white bg-rose-600 hover:bg-rose-500 shadow-lg transition-all cursor-pointer">
-                    🚪 Exit to Menu
-                </button>
+    <!-- Victory Modal -->
+    <div id="victoryModal" class="fixed inset-0 bg-black/90 z-[95] hidden items-center justify-center p-4 backdrop-blur-md">
+        <div class="modal-box border p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl">
+            <div id="victoryIcon" class="text-5xl mb-3 drop-shadow-lg">🏆</div>
+            <h2 id="victoryTitle" class="font-black text-2xl mb-2 tracking-wider text-emerald-400 uppercase drop-shadow">VICTORY!</h2>
+            <p id="victoryText" class="text-sm mb-6 font-bold text-slate-200">Player wins!</p>
+            <div class="flex flex-col gap-3">
+                <button id="acceptRematchBtn" class="w-full py-4 rounded-2xl font-black text-xs uppercase text-white action-btn shadow-lg cursor-pointer">▶️ Next Round / Rematch</button>
+                <button onclick="leaveMatch()" class="w-full py-3 rounded-2xl font-bold text-xs uppercase text-white bg-rose-700 hover:bg-rose-600 shadow-lg cursor-pointer">🚪 Leave Room</button>
             </div>
         </div>
     </div>

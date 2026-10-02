@@ -1,590 +1,3193 @@
 // ==========================================
-// 1. Audio & Glowing X/O Canvas Background
+// 1. Audio & Lightweight Background
 // ==========================================
+
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
 function playSound(type) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    const osc = audioCtx.createOscillator(), gainNode = audioCtx.createGain();
-    osc.connect(gainNode); gainNode.connect(audioCtx.destination);
-    if (type === 'click') { 
-        osc.type = 'sine'; osc.frequency.setValueAtTime(400, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.08); 
-        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime); gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08); 
-        osc.start(); osc.stop(audioCtx.currentTime + 0.08); 
-    } else if (type === 'win') { 
-        osc.type = 'triangle'; osc.frequency.setValueAtTime(300, audioCtx.currentTime); osc.frequency.setValueAtTime(700, audioCtx.currentTime + 0.2); 
-        gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime); gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4); 
-        osc.start(); osc.stop(audioCtx.currentTime + 0.4); 
-    } else if (type === 'lose') { 
-        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(300, audioCtx.currentTime); osc.frequency.linearRampToValueAtTime(150, audioCtx.currentTime + 0.4); 
-        gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime); gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4); 
-        osc.start(); osc.stop(audioCtx.currentTime + 0.4); 
+
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    if (type === 'click') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.08);
+
+        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.08);
+    }
+
+    else if (type === 'win') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(700, audioCtx.currentTime + 0.2);
+
+        gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.4);
+    }
+
+    else if (type === 'lose') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(150, audioCtx.currentTime + 0.4);
+
+        gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.4);
     }
 }
 
-const bgCanvas = document.getElementById('bgCanvas'); const bgCtx = bgCanvas.getContext('2d');
+const bgCanvas = document.getElementById('bgCanvas');
+const bgCtx = bgCanvas.getContext('2d');
+
 let bgParticles = [];
-function resizeBg() { bgCanvas.width = window.innerWidth; bgCanvas.height = window.innerHeight; }
-window.addEventListener('resize', resizeBg); resizeBg();
-for (let i = 0; i < 18; i++) bgParticles.push({ x: Math.random() * bgCanvas.width, y: Math.random() * bgCanvas.height, size: Math.random() * 28 + 24, speedY: Math.random() * 0.4 + 0.1, char: Math.random() > 0.5 ? 'X' : 'O', rot: Math.random() * Math.PI, rSpeed: (Math.random() - 0.5) * 0.01 });
+
+function resizeBg() {
+    bgCanvas.width = window.innerWidth;
+    bgCanvas.height = window.innerHeight;
+}
+
+window.addEventListener('resize', resizeBg);
+resizeBg();
+
+for (let i = 0; i < 18; i++) {
+    bgParticles.push({
+        x: Math.random() * bgCanvas.width,
+        y: Math.random() * bgCanvas.height,
+        size: Math.random() * 28 + 24,
+        speedY: Math.random() * 0.4 + 0.1,
+        char: Math.random() > 0.5 ? 'X' : 'O',
+        rot: Math.random() * Math.PI,
+        rSpeed: (Math.random() - 0.5) * 0.01
+    });
+}
+
 function animateBg() {
     bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
-    const primary = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#06b6d4';
+
+    const primary =
+        getComputedStyle(document.documentElement)
+            .getPropertyValue('--primary')
+            .trim() || '#06b6d4';
+
     bgParticles.forEach(p => {
-        p.y -= p.speedY; p.rot += p.rSpeed;
-        if (p.y < -50) { p.y = bgCanvas.height + 50; p.x = Math.random() * bgCanvas.width; }
-        bgCtx.save(); bgCtx.translate(p.x, p.y); bgCtx.rotate(p.rot);
-        bgCtx.fillStyle = primary; bgCtx.globalAlpha = 0.08;
-        bgCtx.font = `900 ${p.size}px sans-serif`; bgCtx.textAlign = 'center'; bgCtx.textBaseline = 'middle';
+        p.y -= p.speedY;
+        p.rot += p.rSpeed;
+
+        if (p.y < -50) {
+            p.y = bgCanvas.height + 50;
+            p.x = Math.random() * bgCanvas.width;
+        }
+
+        bgCtx.save();
+        bgCtx.translate(p.x, p.y);
+        bgCtx.rotate(p.rot);
+
+        bgCtx.fillStyle = primary;
+        bgCtx.globalAlpha = 0.08;
+        bgCtx.font = `900 ${p.size}px sans-serif`;
+        bgCtx.textAlign = 'center';
+        bgCtx.textBaseline = 'middle';
         bgCtx.fillText(p.char, 0, 0);
+
         bgCtx.restore();
     });
+
     requestAnimationFrame(animateBg);
-} animateBg();
+}
+
+animateBg();
+
 
 // ==========================================
-// 2. Global State & DOM Setup
+// 2. Global State
 // ==========================================
+
 let playerId = localStorage.getItem('playerId') || null;
 let playerName = localStorage.getItem('playerName') || '';
 let playerPin = localStorage.getItem('playerPin') || '';
-let sessionId = 's_' + Math.random().toString(36).substr(2, 9);
 
-let gameMode = 'offline', aiLevel = 'medium', currentFormat = '1', targetWins = 1;
-let currentMatchId = null, myRole = 'X', opponentName = 'Opponent', opponentId = null;
-let boardWins = Array(9).fill(null), boardStates = Array(9).fill().map(() => Array(9).fill(''));
-let activeBoardIndex = -1, currentPlayer = 'X', scores = { X: 0, O: 0 }, lastMove = null, isUI_Locked = false;
-let userStats = { points: 0, wins: 0, losses: 0, history: [] };
+let sessionId =
+    's_' +
+    Math.random()
+        .toString(36)
+        .substr(2, 9);
 
-let matchListener = null, challengeListener = null;
+let gameMode = 'offline';
+let aiLevel = 'medium';
+
+let currentFormat = '1';
+let targetWins = 1;
+
+let currentMatchId = null;
+let myRole = 'X';
+let opponentName = 'Opponent';
+let opponentId = null;
+
+let boardWins = Array(9).fill(null);
+let boardStates = Array(9)
+    .fill()
+    .map(() => Array(9).fill(''));
+
+let activeBoardIndex = -1;
+let currentPlayer = 'X';
+
+let scores = {
+    X: 0,
+    O: 0
+};
+
+let lastMove = null;
+let isUI_Locked = false;
+
+let userStats = {
+    points: 0,
+    wins: 0,
+    losses: 0,
+    history: []
+};
+
+let matchListener = null;
+let challengeListener = null;
+let challengeRequestListener = null;
+let presenceHeartbeat = null;
+
 let emojiCooldown = false;
+let lastHandledResultId = null;
+let lastResetRequest = null;
 
 const getEl = id => document.getElementById(id);
-function showCustomAlert(title, text) {
-    playSound('click'); getEl('customModalTitle').textContent = title; getEl('customModalText').textContent = text;
-    getEl('customModalButtons').innerHTML = `<button id="cmOk" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white cursor-pointer">OK</button>`;
-    getEl('customModal').style.display = 'flex';
-    getEl('cmOk').onclick = () => getEl('customModal').style.display = 'none';
-}
-function showCustomConfirm(title, text, onConfirm) {
-    playSound('click'); getEl('customModalTitle').textContent = title; getEl('customModalText').textContent = text;
-    getEl('customModalButtons').innerHTML = `<button id="cmYes" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white cursor-pointer">Yes</button><button id="cmNo" class="w-full bg-rose-600 text-white font-bold py-3 rounded-xl text-sm cursor-pointer">No</button>`;
-    getEl('customModal').style.display = 'flex';
-    getEl('cmYes').onclick = () => { getEl('customModal').style.display = 'none'; onConfirm(); };
-    getEl('cmNo').onclick = () => { getEl('customModal').style.display = 'none'; };
-}
+
 
 // ==========================================
-// 3. Routing (SPA Logic)
+// 3. Custom Modals
 // ==========================================
+
+function showCustomAlert(title, text) {
+    playSound('click');
+
+    getEl('customModalTitle').textContent = title;
+    getEl('customModalText').textContent = text;
+
+    getEl('customModalButtons').innerHTML = `
+        <button
+            id="cmOk"
+            class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white cursor-pointer"
+        >
+            OK
+        </button>
+    `;
+
+    getEl('customModal').style.display = 'flex';
+
+    getEl('cmOk').onclick = () => {
+        getEl('customModal').style.display = 'none';
+    };
+}
+
+function showCustomConfirm(title, text, onConfirm) {
+    playSound('click');
+
+    getEl('customModalTitle').textContent = title;
+    getEl('customModalText').textContent = text;
+
+    getEl('customModalButtons').innerHTML = `
+        <button
+            id="cmYes"
+            class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white cursor-pointer"
+        >
+            Yes
+        </button>
+
+        <button
+            id="cmNo"
+            class="w-full bg-rose-600 text-white font-bold py-3 rounded-xl text-sm cursor-pointer"
+        >
+            No
+        </button>
+    `;
+
+    getEl('customModal').style.display = 'flex';
+
+    getEl('cmYes').onclick = () => {
+        getEl('customModal').style.display = 'none';
+        onConfirm();
+    };
+
+    getEl('cmNo').onclick = () => {
+        getEl('customModal').style.display = 'none';
+    };
+}
+
+
+// ==========================================
+// 4. Routing
+// ==========================================
+
 function navigate(hash) {
-    if (!playerId && hash !== '#login') { window.location.hash = '#login'; return; }
-    if (playerId && hash === '#login') { window.location.hash = '#menu'; return; }
-    
-    document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+    if (!playerId && hash !== '#login') {
+        window.location.hash = '#login';
+        return;
+    }
+
+    if (playerId && hash === '#login') {
+        window.location.hash = '#menu';
+        return;
+    }
+
+    document
+        .querySelectorAll('.view-section')
+        .forEach(el => el.classList.add('hidden'));
+
     const target = getEl(`view-${hash.replace('#', '')}`);
-    if (target) target.classList.remove('hidden');
+
+    if (target) {
+        target.classList.remove('hidden');
+    }
+
     getEl('mainHeader').classList.toggle('hidden', hash === '#login');
-    
+
     if (hash === '#menu') updateMenuData();
     if (hash === '#lobby') fetchOnlinePlayers();
     if (hash === '#profile') loadProfileData();
     if (hash === '#history') loadHistoryData();
     if (hash === '#leaderboard') fetchLeaderboard();
-    
+
     window.location.hash = hash;
 }
-window.addEventListener('hashchange', () => navigate(window.location.hash || (playerId ? '#menu' : '#login')));
 
-// Theme Management
-const themeSelect = getEl('themeSelector');
-themeSelect.value = localStorage.getItem('theme') || 'theme-cyberpunk';
-getEl('htmlRoot').className = themeSelect.value;
-themeSelect.addEventListener('change', (e) => {
-    playSound('click'); localStorage.setItem('theme', e.target.value); getEl('htmlRoot').className = e.target.value;
-    if(window.db && playerId) window.dbUpdate(window.dbRef(window.db, 'players/'+playerId), {theme: e.target.value});
+window.addEventListener('hashchange', () => {
+    navigate(
+        window.location.hash ||
+        (playerId ? '#menu' : '#login')
+    );
 });
 
+
 // ==========================================
-// 4. Auth & Presence System
+// 5. Theme
 // ==========================================
-getEl('togglePinBtn').onclick = (e) => {
+
+const themeSelect = getEl('themeSelector');
+
+themeSelect.value =
+    localStorage.getItem('theme') ||
+    'theme-cyberpunk';
+
+getEl('htmlRoot').className = themeSelect.value;
+
+themeSelect.addEventListener('change', e => {
+    playSound('click');
+
+    localStorage.setItem('theme', e.target.value);
+    getEl('htmlRoot').className = e.target.value;
+
+    if (window.db && playerId) {
+        window.dbUpdate(
+            window.dbRef(
+                window.db,
+                'players/' + playerId
+            ),
+            {
+                theme: e.target.value
+            }
+        );
+    }
+});
+
+
+// ==========================================
+// 6. Auth
+// ==========================================
+
+getEl('togglePinBtn').onclick = e => {
     const input = getEl('playerPinInput');
-    if(input.classList.contains('password-disc')) { input.classList.remove('password-disc'); e.target.textContent = '🙈'; }
-    else { input.classList.add('password-disc'); e.target.textContent = '👁️'; }
+
+    if (input.classList.contains('password-disc')) {
+        input.classList.remove('password-disc');
+        e.target.textContent = '🙈';
+    } else {
+        input.classList.add('password-disc');
+        e.target.textContent = '👁️';
+    }
 };
 
-getEl('playerPinInput').addEventListener('input', function() { this.value = this.value.replace(/[^0-9]/g, ''); });
-getEl('playerNameInput').addEventListener('input', function() { this.value = this.value.toLowerCase().replace(/[^a-z ]/g, ''); });
+getEl('playerPinInput').addEventListener('input', function () {
+    this.value = this.value.replace(/[^0-9]/g, '');
+});
+
+getEl('playerNameInput').addEventListener('input', function () {
+    this.value = this.value
+        .toLowerCase()
+        .replace(/[^a-z ]/g, '');
+});
 
 let isRegister = false;
+
 getEl('authSwitchBtn').onclick = () => {
-    isRegister = !isRegister; playSound('click');
-    getEl('authModalTitle').textContent = isRegister ? 'Create Account' : 'Player Login';
-    getEl('authSubmitBtn').textContent = isRegister ? 'Register' : 'Login';
-    getEl('authSwitchBtn').textContent = isRegister ? 'Have an account? Login' : 'Create Account';
+    isRegister = !isRegister;
+
+    playSound('click');
+
+    getEl('authModalTitle').textContent =
+        isRegister
+            ? 'Create Account'
+            : 'Player Login';
+
+    getEl('authSubmitBtn').textContent =
+        isRegister
+            ? 'Register'
+            : 'Login';
+
+    getEl('authSwitchBtn').textContent =
+        isRegister
+            ? 'Have an account? Login'
+            : 'Create Account';
 };
 
 getEl('authSubmitBtn').onclick = async () => {
     playSound('click');
-    let name = getEl('playerNameInput').value.replace(/\s{2,}/g, ' ').trim();
-    let pin = getEl('playerPinInput').value;
-    if (!/^[a-z ]{3,40}$/.test(name)) return showCustomAlert('Error', 'Name must be 3-40 lowercase letters.');
-    if (!/^\d{4}$/.test(pin)) return showCustomAlert('Error', 'PIN must be exactly 4 digits.');
-    if (!window.db) return showCustomAlert('Wait', 'Connecting to server...');
 
-    const snap = await window.dbGet(window.dbRef(window.db, 'players'));
-    let exists = false, matchedId = null, pData = null;
+    const name = getEl('playerNameInput')
+        .value
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+    const pin =
+        getEl('playerPinInput').value;
+
+    if (!/^[a-z ]{3,40}$/.test(name)) {
+        return showCustomAlert(
+            'Error',
+            'Name must be 3-40 lowercase letters.'
+        );
+    }
+
+    if (!/^\d{4}$/.test(pin)) {
+        return showCustomAlert(
+            'Error',
+            'PIN must be exactly 4 digits.'
+        );
+    }
+
+    if (!window.db) {
+        return showCustomAlert(
+            'Wait',
+            'Connecting to server...'
+        );
+    }
+
+    const snap = await window.dbGet(
+        window.dbRef(window.db, 'players')
+    );
+
+    let exists = false;
+    let matchedId = null;
+    let pData = null;
+
     if (snap.exists()) {
         snap.forEach(child => {
-            let u = child.val(); if (u.name === name) { exists = true; matchedId = child.key; pData = u; }
+            const u = child.val();
+
+            if (u.name === name) {
+                exists = true;
+                matchedId = child.key;
+                pData = u;
+            }
         });
     }
 
     if (isRegister) {
-        if (exists) return showCustomAlert('Taken', 'Name exists. Try logging in.');
-        playerId = 'p_' + Math.random().toString(36).substr(2, 9);
-        playerName = name; playerPin = pin; userStats = { points: 0, wins: 0, losses: 0, history: [] };
+        if (exists) {
+            return showCustomAlert(
+                'Taken',
+                'Name exists. Try logging in.'
+            );
+        }
+
+        playerId =
+            'p_' +
+            Math.random()
+                .toString(36)
+                .substr(2, 9);
+
+        playerName = name;
+        playerPin = pin;
+
+        userStats = {
+            points: 0,
+            wins: 0,
+            losses: 0,
+            history: []
+        };
     } else {
-        if (!exists || pData.pin !== pin) return showCustomAlert('Failed', 'Invalid name or PIN.');
-        playerId = matchedId; playerName = pData.name; playerPin = pData.pin; 
-        userStats = { points: pData.points||0, wins: pData.wins||0, losses: pData.losses||0, history: pData.history||[] };
+        if (!exists || pData.pin !== pin) {
+            return showCustomAlert(
+                'Failed',
+                'Invalid name or PIN.'
+            );
+        }
+
+        playerId = matchedId;
+        playerName = pData.name;
+        playerPin = pData.pin;
+
+        userStats = {
+            points: pData.points || 0,
+            wins: pData.wins || 0,
+            losses: pData.losses || 0,
+            history: pData.history || []
+        };
     }
 
-    localStorage.setItem('playerId', playerId); localStorage.setItem('playerName', playerName); localStorage.setItem('playerPin', playerPin);
-    setupPresence(); navigate('#menu');
+    localStorage.setItem('playerId', playerId);
+    localStorage.setItem('playerName', playerName);
+    localStorage.setItem('playerPin', playerPin);
+
+    setupPresence();
+    await processPendingResults(true);
+
+    navigate('#menu');
 };
 
+
+// ==========================================
+// 7. Presence
+// ==========================================
+
 function setupPresence() {
-    if(!window.db || !playerId) return;
-    const ref = window.dbRef(window.db, 'players/' + playerId);
-    window.dbOnDisconnect(ref).update({ status: 'offline', lastActive: Date.now() });
-    
-    window.dbOnValue(window.dbRef(window.db, `players/${playerId}/sessionId`), snap => {
-        if(snap.exists() && snap.val() !== sessionId) {
-            localStorage.clear(); alert("Logged in from another device!"); window.location.reload();
+    if (!window.db || !playerId) return;
+
+    const ref =
+        window.dbRef(
+            window.db,
+            'players/' + playerId
+        );
+
+    window.dbOnDisconnect(ref).update({
+        status: 'offline',
+        lastActive: Date.now()
+    });
+
+    window.dbOnValue(
+        window.dbRef(
+            window.db,
+            `players/${playerId}/sessionId`
+        ),
+        snap => {
+            if (
+                snap.exists() &&
+                snap.val() !== sessionId
+            ) {
+                localStorage.clear();
+
+                alert(
+                    "Logged in from another device!"
+                );
+
+                window.location.reload();
+            }
         }
-    });
+    );
 
-    const updatePresence = (stat) => window.dbUpdate(ref, { name: playerName, pin: playerPin, points: userStats.points, wins: userStats.wins, losses: userStats.losses, status: stat, sessionId: sessionId, lastActive: Date.now() });
-    updatePresence(currentMatchId ? 'in-game' : 'online');
-    
-    document.addEventListener('visibilitychange', () => {
-        if(document.visibilityState === 'visible') updatePresence(currentMatchId ? 'in-game' : 'online');
-        else updatePresence('offline');
-    });
+    const updatePresence = stat =>
+        window.dbUpdate(
+            ref,
+            {
+                name: playerName,
+                pin: playerPin,
+                points: userStats.points,
+                wins: userStats.wins,
+                losses: userStats.losses,
+                status: stat,
+                sessionId,
+                lastActive: Date.now()
+            }
+        );
 
-    if(!challengeListener) {
-        challengeListener = window.dbOnValue(window.dbRef(window.db, 'challenges/' + playerId), snap => {
-            const data = snap.val();
-            if(data && data.status === 'pending') { playSound('bell'); showIncomingChallenge(data); }
-        });
+    updatePresence(
+        currentMatchId
+            ? 'in-game'
+            : 'online'
+    );
+
+    document.addEventListener(
+        'visibilitychange',
+        () => {
+            if (document.visibilityState === 'visible') {
+                updatePresence(
+                    currentMatchId
+                        ? 'in-game'
+                        : 'online'
+                );
+            } else {
+                updatePresence('offline');
+            }
+        }
+    );
+
+    if (!challengeListener) {
+        challengeListener =
+            window.dbOnValue(
+                window.dbRef(
+                    window.db,
+                    `challenges/${playerId}`
+                ),
+                snap => {
+                    const data = snap.val();
+
+                    if (
+                        data &&
+                        data.status === 'pending'
+                    ) {
+                        playSound('bell');
+                        showIncomingChallenge(data);
+                    }
+                }
+            );
     }
 }
 
-window.addEventListener('firebase-ready', async () => {
-    if(playerId) {
-        const snap = await window.dbGet(window.dbRef(window.db, `players/${playerId}`));
-        if(snap.exists() && snap.val().pin === playerPin) {
-            let d = snap.val(); userStats = { points: d.points||0, wins: d.wins||0, losses: d.losses||0, history: d.history||[] };
-            setupPresence(); navigate(window.location.hash || '#menu');
-        } else { localStorage.clear(); navigate('#login'); }
-    } else navigate('#login');
-});
-
-getEl('logoutBtn').onclick = () => showCustomConfirm('Logout', 'Are you sure?', () => {
-    if(window.db && playerId) window.dbUpdate(window.dbRef(window.db, `players/${playerId}`), { status: 'offline' });
-    localStorage.clear(); window.location.reload();
-});
 
 // ==========================================
-// 5. Menu, Profile, History & Leaderboard
+// 8. Firebase Ready
 // ==========================================
-function updateMenuData() { getEl('menuUsername').textContent = playerName; }
 
-function getRank(pts) {
-    if(pts < 20) return 'Rookie 🥉'; if(pts < 50) return 'Fighter 🥈';
-    if(pts < 100) return 'Master 🥇'; return 'Grandmaster 🏆';
+window.addEventListener(
+    'firebase-ready',
+    async () => {
+        if (playerId) {
+            const snap =
+                await window.dbGet(
+                    window.dbRef(
+                        window.db,
+                        `players/${playerId}`
+                    )
+                );
+
+            if (
+                snap.exists() &&
+                snap.val().pin === playerPin
+            ) {
+                const d = snap.val();
+
+                userStats = {
+                    points: d.points || 0,
+                    wins: d.wins || 0,
+                    losses: d.losses || 0,
+                    history: d.history || []
+                };
+
+                setupPresence();
+                await processPendingResults(true);
+
+                navigate(
+                    window.location.hash ||
+                    '#menu'
+                );
+            } else {
+                localStorage.clear();
+                navigate('#login');
+            }
+        } else {
+            navigate('#login');
+        }
+    }
+);
+
+
+// ==========================================
+// 9. Logout
+// ==========================================
+
+getEl('logoutBtn').onclick = () =>
+    showCustomConfirm(
+        'Logout',
+        'Are you sure?',
+        () => {
+            if (window.db && playerId) {
+                window.dbUpdate(
+                    window.dbRef(
+                        window.db,
+                        `players/${playerId}`
+                    ),
+                    {
+                        status: 'offline'
+                    }
+                );
+            }
+
+            localStorage.clear();
+            window.location.reload();
+        }
+    );
+
+
+// ==========================================
+// 10. Profile / Ranking / History
+// ==========================================
+
+function updateMenuData() {
+    getEl('menuUsername').textContent =
+        playerName;
 }
 
+function getRank(pts) {
+    if (pts < 20) return 'Rookie 🥉';
+    if (pts < 50) return 'Fighter 🥈';
+    if (pts < 100) return 'Master 🥇';
+
+    return 'Grandmaster 🏆';
+}
+
+async function getPlayerRank(id, result = null) {
+    if (!window.db) return null;
+
+    try {
+        const snap =
+            await window.dbGet(
+                window.dbRef(
+                    window.db,
+                    'players'
+                )
+            );
+
+        if (!snap.exists()) return null;
+
+        const players = [];
+
+        snap.forEach(c => {
+            const d = c.val() || {};
+
+            if (d.name) {
+                players.push({
+                    id: c.key,
+                    name: d.name,
+                    points: Number(d.points) || 0
+                });
+            }
+        });
+
+        if (result?.players) {
+            Object.entries(result.players)
+                .forEach(([pid, r]) => {
+                    const p =
+                        players.find(
+                            x => x.id === pid
+                        );
+
+                    if (p) {
+                        p.points +=
+                            Number(r.delta) || 0;
+                    }
+                });
+        }
+
+        players.sort(
+            (a, b) =>
+                (b.points - a.points) ||
+                a.name.localeCompare(b.name)
+        );
+
+        const idx =
+            players.findIndex(
+                x => x.id === id
+            );
+
+        return idx >= 0
+            ? idx + 1
+            : null;
+
+    } catch (e) {
+        return null;
+    }
+}
+
+
+// ==========================================
+// 11. RESULT SETTLEMENT
+// ==========================================
+
+async function commitPlayerResult(
+    result,
+    silent = false
+) {
+    if (
+        !window.db ||
+        !playerId ||
+        !result ||
+        !result.players ||
+        !result.players[playerId]
+    ) {
+        return null;
+    }
+
+    const mine =
+        result.players[playerId];
+
+    const matchKey =
+        result.matchId;
+
+    const playerRef =
+        window.dbRef(
+            window.db,
+            `players/${playerId}`
+        );
+
+    let updated = null;
+
+    try {
+        const tx =
+            await window.dbTransaction(
+                playerRef,
+                current => {
+                    if (!current) return current;
+
+                    current = {
+                        ...current
+                    };
+
+                    current.points =
+                        Number(current.points) || 0;
+
+                    current.wins =
+                        Number(current.wins) || 0;
+
+                    current.losses =
+                        Number(current.losses) || 0;
+
+                    current.history =
+                        Array.isArray(
+                            current.history
+                        )
+                            ? current.history
+                            : [];
+
+                    current.processedMatches =
+                        current.processedMatches ||
+                        {};
+
+                    if (
+                        current
+                            .processedMatches[
+                            matchKey
+                        ]
+                    ) {
+                        return current;
+                    }
+
+                    current.points +=
+                        mine.delta;
+
+                    if (
+                        mine.outcome === 'Win'
+                    ) {
+                        current.wins += 1;
+                    }
+
+                    if (
+                        mine.outcome === 'Loss'
+                    ) {
+                        current.losses += 1;
+                    }
+
+                    current.history.push({
+                        res: mine.outcome,
+                        opp:
+                            mine.opponentName ||
+                            'Opponent',
+                        pointsDelta:
+                            mine.delta,
+                        matchId:
+                            matchKey,
+                        at:
+                            result.at ||
+                            Date.now()
+                    });
+
+                    if (
+                        current.history.length >
+                        50
+                    ) {
+                        current.history =
+                            current.history.slice(
+                                -50
+                            );
+                    }
+
+                    current.processedMatches[
+                        matchKey
+                    ] = true;
+
+                    return current;
+                }
+            );
+
+        if (!tx.committed) {
+            return null;
+        }
+
+        updated =
+            tx.snapshot.val() || {};
+
+        if (
+            playerId ===
+            localStorage.getItem('playerId')
+        ) {
+            userStats = {
+                points:
+                    Number(updated.points) || 0,
+                wins:
+                    Number(updated.wins) || 0,
+                losses:
+                    Number(updated.losses) || 0,
+                history:
+                    Array.isArray(
+                        updated.history
+                    )
+                        ? updated.history
+                        : []
+            };
+        }
+
+        return updated;
+
+    } catch (e) {
+        console.error(
+            'Result settlement failed',
+            e
+        );
+
+        return null;
+    }
+}
+
+async function buildResultMessage(
+    result,
+    stats,
+    mine
+) {
+    const rank =
+        await getPlayerRank(
+            playerId,
+            result
+        );
+
+    const label =
+        mine.outcome === 'Win'
+            ? 'كسبت'
+            : mine.outcome === 'Loss'
+                ? 'خسرت'
+                : 'تعادل';
+
+    const deltaText =
+        mine.delta > 0
+            ? `+${mine.delta}`
+            : `${mine.delta}`;
+
+    return (
+        `${label} ${Math.abs(mine.delta)} نقطة ` +
+        `(${deltaText}) — ` +
+        `نقاطك الحالية: ${Number(stats?.points) || 0}` +
+        `${rank ? ` — ترتيبك: #${rank}` : ''}.`
+    );
+}
+
+async function publishMatchResult(
+    matchId,
+    winnerRole = 'DRAW',
+    reason = 'game'
+) {
+    if (
+        !window.db ||
+        !matchId
+    ) {
+        return null;
+    }
+
+    const matchRef =
+        window.dbRef(
+            window.db,
+            `matches/${matchId}`
+        );
+
+    let result = null;
+
+    try {
+        const tx =
+            await window.dbTransaction(
+                matchRef,
+                d => {
+                    if (!d) return d;
+
+                    if (d.result) {
+                        return d;
+                    }
+
+                    const players =
+                        d.players || {};
+
+                    const xId =
+                        players.X?.id;
+
+                    const oId =
+                        players.O?.id;
+
+                    if (!xId || !oId) {
+                        return d;
+                    }
+
+                    const xName =
+                        players.X?.name ||
+                        'Player X';
+
+                    const oName =
+                        players.O?.name ||
+                        'Player O';
+
+                    const draw =
+                        winnerRole === 'DRAW';
+
+                    const xWin =
+                        winnerRole === 'X';
+
+                    const outcome = {
+                        matchId,
+                        type:
+                            draw
+                                ? 'draw'
+                                : reason,
+                        winnerRole:
+                            draw
+                                ? null
+                                : winnerRole,
+                        at: Date.now(),
+
+                        players: {
+                            [xId]: {
+                                outcome:
+                                    draw
+                                        ? 'Draw'
+                                        : xWin
+                                            ? 'Win'
+                                            : 'Loss',
+
+                                delta:
+                                    draw
+                                        ? 1
+                                        : xWin
+                                            ? 3
+                                            : -1,
+
+                                opponentName:
+                                    oName
+                            },
+
+                            [oId]: {
+                                outcome:
+                                    draw
+                                        ? 'Draw'
+                                        : xWin
+                                            ? 'Loss'
+                                            : 'Win',
+
+                                delta:
+                                    draw
+                                        ? 1
+                                        : xWin
+                                            ? -1
+                                            : 3,
+
+                                opponentName:
+                                    xName
+                            }
+                        }
+                    };
+
+                    d.result =
+                        outcome;
+
+                    return d;
+                }
+            );
+
+        if (!tx.committed) {
+            return null;
+        }
+
+        result =
+            (
+                tx.snapshot.val() ||
+                {}
+            ).result || null;
+
+        if (result?.players) {
+            const pending = {};
+
+            Object.keys(
+                result.players
+            ).forEach(id => {
+                pending[
+                    `pendingResults/${id}/${matchId}`
+                ] = result;
+            });
+
+            await window.dbUpdate(
+                window.dbRef(
+                    window.db
+                ),
+                pending
+            );
+        }
+
+        return result;
+
+    } catch (e) {
+        console.error(
+            'Could not publish match result',
+            e
+        );
+
+        return null;
+    }
+}
+
+async function handleOnlineResult(
+    result,
+    showMessage = true
+) {
+    if (
+        !result ||
+        !result.players?.[playerId]
+    ) {
+        return;
+    }
+
+    if (
+        lastHandledResultId ===
+        result.matchId
+    ) {
+        return;
+    }
+
+    const mine =
+        result.players[playerId];
+
+    const stats =
+        await commitPlayerResult(
+            result,
+            false
+        );
+
+    if (!stats) {
+        return;
+    }
+
+    lastHandledResultId =
+        result.matchId;
+
+    if (showMessage) {
+        const msg =
+            await buildResultMessage(
+                result,
+                stats,
+                mine
+            );
+
+        showCustomAlert(
+            mine.outcome === 'Win'
+                ? 'You Won'
+                : mine.outcome === 'Loss'
+                    ? 'You Lost'
+                    : 'Draw',
+            msg
+        );
+    }
+
+    if (window.db) {
+        await window.dbRemove(
+            window.dbRef(
+                window.db,
+                `pendingResults/${playerId}/${result.matchId}`
+            )
+        );
+    }
+
+    loadProfileData();
+}
+
+async function processPendingResults(
+    silent = true
+) {
+    if (
+        !window.db ||
+        !playerId
+    ) {
+        return;
+    }
+
+    const ref =
+        window.dbRef(
+            window.db,
+            `pendingResults/${playerId}`
+        );
+
+    const snap =
+        await window.dbGet(ref);
+
+    if (!snap.exists()) {
+        return;
+    }
+
+    const jobs = [];
+
+    snap.forEach(c => {
+        jobs.push({
+            key: c.key,
+            value: c.val()
+        });
+    });
+
+    for (const job of jobs) {
+        await handleOnlineResult(
+            job.value,
+            false
+        );
+
+        await window.dbRemove(
+            window.dbRef(
+                window.db,
+                `pendingResults/${playerId}/${job.key}`
+            )
+        );
+    }
+}
+
+
+// ==========================================
+// 12. Profile / History
+// ==========================================
+
 function loadProfileData() {
-    getEl('profileNameDisplay').textContent = playerName;
-    getEl('profileRankTitle').textContent = getRank(userStats.points);
-    getEl('statPoints').textContent = userStats.points;
-    getEl('statWins').textContent = userStats.wins;
-    getEl('statLosses').textContent = userStats.losses;
+    getEl('profileNameDisplay').textContent =
+        playerName;
+
+    getEl('profileRankTitle').textContent =
+        getRank(userStats.points);
+
+    getEl('statPoints').textContent =
+        userStats.points;
+
+    getEl('statWins').textContent =
+        userStats.wins;
+
+    getEl('statLosses').textContent =
+        userStats.losses;
 }
 
 function loadHistoryData() {
-    const hl = getEl('matchHistoryList'); hl.innerHTML = '';
-    if(!userStats.history || userStats.history.length === 0) {
-        hl.innerHTML = '<p class="text-slate-500 text-center py-6 text-xs">No matches recorded yet.</p>';
+    const hl =
+        getEl('matchHistoryList');
+
+    hl.innerHTML = '';
+
+    if (
+        !userStats.history ||
+        userStats.history.length === 0
+    ) {
+        hl.innerHTML =
+            '<p class="text-slate-500 text-center py-6 text-xs">No matches recorded yet.</p>';
+
         return;
     }
-    [...userStats.history].reverse().forEach(m => {
-        hl.innerHTML += `<li class="flex justify-between items-center bg-black/40 p-3 rounded-xl border border-white/5 text-xs"><span class="${m.res==='Win'?'text-emerald-400':m.res==='Loss'?'text-rose-400':'text-amber-400'} font-bold">${m.res}</span> <span class="text-slate-300">vs ${m.opp}</span></li>`;
-    });
+
+    [...userStats.history]
+        .reverse()
+        .forEach(m => {
+            hl.innerHTML += `
+                <li class="flex justify-between items-center bg-black/40 p-3 rounded-xl border border-white/5 text-xs">
+                    <span class="${
+                        m.res === 'Win'
+                            ? 'text-emerald-400'
+                            : m.res === 'Loss'
+                                ? 'text-rose-400'
+                                : 'text-amber-400'
+                    } font-bold">
+                        ${m.res}
+                    </span>
+
+                    <span class="text-slate-300">
+                        vs ${m.opp}
+                    </span>
+                </li>
+            `;
+        });
 }
 
-getEl('updatePinBtn').onclick = () => {
-    if(currentMatchId) return showCustomAlert('Blocked', 'Cannot change PIN while in a game.');
-    let o = getEl('updateOldPin').value, n = getEl('updateNewPin').value;
-    if(o !== playerPin) return showCustomAlert('Error', 'Old PIN incorrect.');
-    if(!/^\d{4}$/.test(n)) return showCustomAlert('Error', 'New PIN must be 4 digits.');
-    playerPin = n; localStorage.setItem('playerPin', n);
-    window.dbUpdate(window.dbRef(window.db, `players/${playerId}`), { pin: n });
-    showCustomAlert('Success', 'PIN updated safely.'); getEl('updateOldPin').value = ''; getEl('updateNewPin').value = '';
+
+// ==========================================
+// 13. PIN Update
+// ==========================================
+
+getEl('updatePinBtn').onclick = async () => {
+    if (currentMatchId) {
+        return showCustomAlert(
+            'Blocked',
+            'Cannot change PIN while in a game.'
+        );
+    }
+
+    const oldPin =
+        getEl('updateOldPin').value;
+
+    const newPin =
+        getEl('updateNewPin').value;
+
+    if (!/^\d{4}$/.test(oldPin)) {
+        return showCustomAlert(
+            'Error',
+            'Old PIN must be 4 digits.'
+        );
+    }
+
+    if (!/^\d{4}$/.test(newPin)) {
+        return showCustomAlert(
+            'Error',
+            'New PIN must be 4 digits.'
+        );
+    }
+
+    if (oldPin !== playerPin) {
+        return showCustomAlert(
+            'Error',
+            'Old PIN is incorrect.'
+        );
+    }
+
+    playerPin = newPin;
+
+    await window.dbUpdate(
+        window.dbRef(
+            window.db,
+            `players/${playerId}`
+        ),
+        {
+            pin: newPin
+        }
+    );
+
+    localStorage.setItem(
+        'playerPin',
+        newPin
+    );
+
+    showCustomAlert(
+        'Updated',
+        'PIN updated successfully.'
+    );
+
+    getEl('updateOldPin').value = '';
+    getEl('updateNewPin').value = '';
 };
 
-getEl('deleteAccountBtn').onclick = () => {
-    if(currentMatchId) return showCustomAlert('Blocked', 'Cannot delete account during a match.');
-    let pinInput = getEl('deleteAccountPin').value;
-    if(pinInput !== playerPin) return showCustomAlert('Error', 'Incorrect PIN. Deletion cancelled.');
-    
-    showCustomConfirm('Delete Account', 'Are you sure you want to delete your account permanently?', async () => {
-        if(window.db && playerId) {
-            await window.dbRemove(window.dbRef(window.db, `players/${playerId}`));
-            await window.dbRemove(window.dbRef(window.db, `challenges/${playerId}`));
-        }
-        localStorage.clear(); window.location.reload();
-    });
-};
+
+// ==========================================
+// 14. Leaderboard
+// ==========================================
 
 function fetchLeaderboard() {
-    if(!window.db) return;
-    window.dbOnValue(window.dbRef(window.db, 'players'), snap => {
-        const p = snap.val(); if(!p) return;
-        const arr = Object.values(p).filter(x=>x.name).sort((a,b)=>(b.points||0)-(a.points||0)).slice(0,10);
-        const list = getEl('leaderboardList'); list.innerHTML = '';
-        arr.forEach((x, i) => {
-            list.innerHTML += `<div class="flex justify-between p-3 border-b border-white/10 last:border-0 items-center bg-black/20 rounded-lg mb-1 text-xs"><span class="font-bold"><span class="text-slate-400 mr-2">#${i+1}</span> ${x.name}</span> <span class="text-amber-400 font-black">${x.points||0}</span></div>`;
-        });
-    }, {onlyOnce: true});
+    if (!window.db) return;
+
+    window.dbOnValue(
+        window.dbRef(
+            window.db,
+            'players'
+        ),
+        snap => {
+            const p = snap.val();
+
+            if (!p) return;
+
+            const arr =
+                Object.values(p)
+                    .filter(x => x.name)
+                    .sort(
+                        (a, b) =>
+                            (b.points || 0) -
+                            (a.points || 0)
+                    )
+                    .slice(0, 10);
+
+            const list =
+                getEl('leaderboardList');
+
+            list.innerHTML = '';
+
+            arr.forEach((x, i) => {
+                list.innerHTML += `
+                    <div class="flex justify-between p-3 border-b border-white/10 last:border-0 items-center bg-black/20 rounded-lg mb-1 text-xs">
+                        <span class="font-bold">
+                            <span class="text-slate-400 mr-2">
+                                #${i + 1}
+                            </span>
+                            ${x.name}
+                        </span>
+
+                        <span class="text-amber-400 font-black">
+                            ${x.points || 0}
+                        </span>
+                    </div>
+                `;
+            });
+        },
+        {
+            onlyOnce: true
+        }
+    );
 }
 
+
 // ==========================================
-// 6. Online Lobby & Challenges
+// 15. Online Lobby
 // ==========================================
-getEl('refreshLobbyBtn').onclick = () => { playSound('click'); fetchOnlinePlayers(); };
+
+getEl('refreshLobbyBtn').onclick = () => {
+    playSound('click');
+    fetchOnlinePlayers();
+};
 
 function fetchOnlinePlayers() {
-    if(!window.db) return;
-    window.dbGet(window.dbRef(window.db, 'matches')).then(snap => {
-        if(snap.exists()) {
-            const now = Date.now(); snap.forEach(c => {
-                if(now - (c.val().lastActive || now) > 600000) window.dbRemove(window.dbRef(window.db, `matches/${c.key}`));
+    if (!window.db) return;
+
+    window.dbGet(
+        window.dbRef(
+            window.db,
+            'matches'
+        )
+    ).then(snap => {
+        if (snap.exists()) {
+            const now = Date.now();
+
+            snap.forEach(c => {
+                if (
+                    now -
+                    (c.val().lastActive || now) >
+                    600000
+                ) {
+                    window.dbRemove(
+                        window.dbRef(
+                            window.db,
+                            `matches/${c.key}`
+                        )
+                    );
+                }
             });
         }
     });
 
-    window.dbOnValue(window.dbRef(window.db, 'players'), snap => {
-        const list = getEl('onlinePlayersList'); list.innerHTML = '';
-        let found = false;
-        snap.forEach(c => {
-            if(c.key === playerId) return;
-            let u = c.val(); if(u.status === 'offline') return; found = true;
-            let isIngame = u.status === 'in-game';
-            list.innerHTML += `<div class="flex justify-between items-center p-3 bg-black/40 rounded-xl border border-white/10 text-xs">
-                <span class="font-bold capitalize truncate max-w-[120px]"><span class="${isIngame?'text-rose-500':'text-emerald-500'}">●</span> ${u.name}</span>
-                ${isIngame ? `<span class="text-[10px] text-rose-400 border border-rose-500/30 px-2 py-1 rounded bg-rose-900/30">In-Game</span>` 
-                           : `<button onclick="sendChallenge('${c.key}', '${u.name}')" class="bg-cyan-700 hover:bg-cyan-600 px-3 py-1.5 rounded-lg font-bold text-xs shadow-md cursor-pointer">Challenge</button>`}
-            </div>`;
-        });
-        if(!found) list.innerHTML = '<p class="text-slate-500 text-center py-4 text-xs">No one is online.</p>';
-    });
+    window.dbOnValue(
+        window.dbRef(
+            window.db,
+            'players'
+        ),
+        snap => {
+            const list =
+                getEl(
+                    'onlinePlayersList'
+                );
+
+            list.innerHTML = '';
+
+            let found = false;
+
+            snap.forEach(c => {
+                if (c.key === playerId) {
+                    return;
+                }
+
+                const u = c.val();
+
+                if (
+                    u.status === 'offline'
+                ) {
+                    return;
+                }
+
+                found = true;
+
+                const isIngame =
+                    u.status === 'in-game';
+
+                list.innerHTML += `
+                    <div class="flex justify-between items-center p-3 bg-black/40 rounded-xl border border-white/10 text-xs">
+
+                        <span class="font-bold capitalize truncate max-w-[120px]">
+                            <span class="${
+                                isIngame
+                                    ? 'text-rose-500'
+                                    : 'text-emerald-500'
+                            }">
+                                ●
+                            </span>
+                            ${u.name}
+                        </span>
+
+                        ${
+                            isIngame
+                                ? `
+                                    <span class="text-[10px] text-rose-400 border border-rose-500/30 px-2 py-1 rounded bg-rose-900/30">
+                                        In-Game
+                                    </span>
+                                `
+                                : `
+                                    <button
+                                        onclick="sendChallenge('${c.key}', '${u.name}')"
+                                        class="bg-cyan-700 hover:bg-cyan-600 px-3 py-1.5 rounded-lg font-bold text-xs shadow-md cursor-pointer"
+                                    >
+                                        Challenge
+                                    </button>
+                                `
+                        }
+                    </div>
+                `;
+            });
+
+            if (!found) {
+                list.innerHTML =
+                    '<p class="text-slate-500 text-center py-4 text-xs">No one is online.</p>';
+            }
+        }
+    );
 }
+
+
+// ==========================================
+// 16. Challenges
+// ==========================================
 
 function sendChallenge(tId, tName) {
     playSound('bell');
-    const format = getEl('matchFormatSelect').value;
-    const mId = [playerId, tId].sort().join('_');
-    window.dbSet(window.dbRef(window.db, `challenges/${tId}`), { fromId: playerId, fromName: playerName, matchId: mId, status: 'pending', format: format, time: Date.now() });
-    showCustomAlert('Sent!', `Waiting for ${tName} to accept...`);
-    
-    const ref = window.dbRef(window.db, `challenges/${tId}`);
-    window.dbOnValue(ref, snap => {
-        let d = snap.val();
-        if(d && d.status === 'accepted') { window.dbRemove(ref); startOnlineMatch(mId, 'X', tName, tId, format); }
-        else if(!d || d.status === 'declined') { window.dbRemove(ref); showCustomAlert('Declined', `${tName} declined your challenge.`); navigate('#lobby'); }
-    });
+
+    const format =
+        getEl('matchFormatSelect').value;
+
+    const mId =
+        [playerId, tId]
+            .sort()
+            .join('_');
+
+    window.dbSet(
+        window.dbRef(
+            window.db,
+            `challenges/${tId}`
+        ),
+        {
+            fromId: playerId,
+            fromName: playerName,
+            matchId: mId,
+            status: 'pending',
+            format,
+            time: Date.now()
+        }
+    );
+
+    showCustomAlert(
+        'Sent!',
+        `Waiting for ${tName} to accept...`
+    );
+
+    const ref =
+        window.dbRef(
+            window.db,
+            `challenges/${tId}`
+        );
+
+    window.dbOnValue(
+        ref,
+        snap => {
+            const d = snap.val();
+
+            if (
+                d &&
+                d.status === 'accepted'
+            ) {
+                window.dbRemove(ref);
+
+                startOnlineMatch(
+                    mId,
+                    'X',
+                    tName,
+                    tId,
+                    format
+                );
+            }
+
+            else if (
+                !d ||
+                d.status === 'declined'
+            ) {
+                window.dbRemove(ref);
+
+                showCustomAlert(
+                    'Declined',
+                    `${tName} declined your challenge.`
+                );
+
+                navigate('#lobby');
+            }
+        }
+    );
 }
 
 let activeIncoming = null;
+
 function showIncomingChallenge(data) {
-    if(Date.now() - (data.time || 0) > 30000) { window.dbRemove(window.dbRef(window.db, `challenges/${playerId}`)); return; }
+    if (
+        Date.now() -
+        (data.time || 0) >
+        30000
+    ) {
+        window.dbRemove(
+            window.dbRef(
+                window.db,
+                `challenges/${playerId}`
+            )
+        );
+
+        return;
+    }
+
     activeIncoming = data;
-    getEl('challengeText').textContent = `${data.fromName} challenges you to [${data.format==='1'?'Single':data.format==='3'?'BO3':'BO5'}]`;
-    getEl('challengeModal').style.display = 'flex';
+
+    getEl('challengeText').textContent =
+        `${data.fromName} challenges you to [${
+            data.format === '1'
+                ? 'Single'
+                : data.format === '3'
+                    ? 'BO3'
+                    : 'BO5'
+        }]`;
+
+    getEl('challengeModal').style.display =
+        'flex';
 }
+
 getEl('acceptChallengeBtn').onclick = () => {
-    playSound('start'); getEl('challengeModal').style.display = 'none';
-    if(activeIncoming) {
-        window.dbSet(window.dbRef(window.db, `matches/${activeIncoming.matchId}`), {
-            format: activeIncoming.format, scores: {X:0,O:0}, boardStates: JSON.stringify(Array(9).fill().map(()=>Array(9).fill(''))), boardWins: JSON.stringify(Array(9).fill(null)),
-            currentPlayer: 'X', activeBoardIndex: -1, lastActive: Date.now(), roundProcessed: false
-        });
-        window.dbUpdate(window.dbRef(window.db, `challenges/${playerId}`), {status: 'accepted'});
-        startOnlineMatch(activeIncoming.matchId, 'O', activeIncoming.fromName, activeIncoming.fromId, activeIncoming.format);
+    playSound('start');
+
+    getEl('challengeModal').style.display =
+        'none';
+
+    if (activeIncoming) {
+        window.dbSet(
+            window.dbRef(
+                window.db,
+                `matches/${activeIncoming.matchId}`
+            ),
+            {
+                format:
+                    activeIncoming.format,
+
+                scores: {
+                    X: 0,
+                    O: 0
+                },
+
+                players: {
+                    X: {
+                        id: activeIncoming.fromId,
+                        name: activeIncoming.fromName
+                    },
+
+                    O: {
+                        id: playerId,
+                        name: playerName
+                    }
+                },
+
+                boardStates:
+                    JSON.stringify(
+                        Array(9)
+                            .fill()
+                            .map(() =>
+                                Array(9).fill('')
+                            )
+                    ),
+
+                boardWins:
+                    JSON.stringify(
+                        Array(9).fill(null)
+                    ),
+
+                currentPlayer: 'X',
+                activeBoardIndex: -1,
+                lastActive: Date.now(),
+                roundProcessed: false,
+                result: null,
+                rematch: null
+            }
+        );
+
+        window.dbUpdate(
+            window.dbRef(
+                window.db,
+                `challenges/${playerId}`
+            ),
+            {
+                status: 'accepted'
+            }
+        );
+
+        startOnlineMatch(
+            activeIncoming.matchId,
+            'O',
+            activeIncoming.fromName,
+            activeIncoming.fromId,
+            activeIncoming.format
+        );
+
         activeIncoming = null;
     }
 };
+
 getEl('rejectChallengeBtn').onclick = () => {
-    playSound('click'); getEl('challengeModal').style.display = 'none';
-    if(activeIncoming) { window.dbUpdate(window.dbRef(window.db, `challenges/${playerId}`), {status: 'declined'}); activeIncoming = null; }
+    playSound('click');
+
+    getEl('challengeModal').style.display =
+        'none';
+
+    if (activeIncoming) {
+        window.dbUpdate(
+            window.dbRef(
+                window.db,
+                `challenges/${playerId}`
+            ),
+            {
+                status: 'declined'
+            }
+        );
+
+        activeIncoming = null;
+    }
 };
 
+
 // ==========================================
-// 7. Core Game Logic & DOM Setup
+// 17. Core Game
 // ==========================================
-function isBoardFull(bArr) { return bArr.every(c => c !== ''); }
+
+function isBoardFull(bArr) {
+    return bArr.every(
+        c => c !== ''
+    );
+}
+
 function checkSmallWin(arr) {
-    const w = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-    for(let [a,b,c] of w) if(arr[a] && arr[a]===arr[b] && arr[a]===arr[c]) return arr[a];
+    const w = [
+        [0,1,2],
+        [3,4,5],
+        [6,7,8],
+        [0,3,6],
+        [1,4,7],
+        [2,5,8],
+        [0,4,8],
+        [2,4,6]
+    ];
+
+    for (let [a,b,c] of w) {
+        if (
+            arr[a] &&
+            arr[a] === arr[b] &&
+            arr[a] === arr[c]
+        ) {
+            return arr[a];
+        }
+    }
+
     return null;
 }
+
 function checkUltimateWin() {
-    const w = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-    for(let [a,b,c] of w) if(boardWins[a] && boardWins[a]!=='DRAW' && boardWins[a]===boardWins[b] && boardWins[a]===boardWins[c]) return boardWins[a];
+    const w = [
+        [0,1,2],
+        [3,4,5],
+        [6,7,8],
+        [0,3,6],
+        [1,4,7],
+        [2,5,8],
+        [0,4,8],
+        [2,4,6]
+    ];
+
+    for (let [a,b,c] of w) {
+        if (
+            boardWins[a] &&
+            boardWins[a] !== 'DRAW' &&
+            boardWins[a] === boardWins[b] &&
+            boardWins[a] === boardWins[c]
+        ) {
+            return boardWins[a];
+        }
+    }
+
     return null;
 }
 
 function initGameHTML() {
-    const ub = getEl('ultimateBoard'); ub.innerHTML = '';
-    for(let b=0; b<9; b++) {
-        let l = document.createElement('div'); l.className = `local-grid id-bg-${b}`;
-        let ov = document.createElement('div'); ov.className = `overlay-bg hidden id-ov-${b}`;
+    const ub =
+        getEl('ultimateBoard');
+
+    ub.innerHTML = '';
+
+    for (let b = 0; b < 9; b++) {
+        const l =
+            document.createElement('div');
+
+        l.className =
+            `local-grid id-bg-${b}`;
+
+        const ov =
+            document.createElement('div');
+
+        ov.className =
+            `overlay-bg hidden id-ov-${b}`;
+
         l.appendChild(ov);
-        for(let c=0; c<9; c++) {
-            let btn = document.createElement('button'); btn.className = `cell-btn id-btn-${b}-${c}`;
-            btn.onclick = () => tryMove(b, c);
+
+        for (let c = 0; c < 9; c++) {
+            const btn =
+                document.createElement(
+                    'button'
+                );
+
+            btn.className =
+                `cell-btn id-btn-${b}-${c}`;
+
+            btn.onclick = () =>
+                tryMove(b, c);
+
             l.appendChild(btn);
         }
+
         ub.appendChild(l);
     }
 }
 
 function renderGameUI() {
-    getEl('turnIndicator').textContent = currentPlayer;
-    getEl('turnIndicator').className = `font-extrabold text-base ${currentPlayer==='X'?'cell-x':'cell-o'}`;
-    getEl('scoreX').textContent = scores.X; getEl('scoreO').textContent = scores.O;
+    getEl('turnIndicator').textContent =
+        currentPlayer;
 
-    for(let b=0; b<9; b++) {
-        const bg = document.querySelector(`.id-bg-${b}`);
-        const ov = document.querySelector(`.id-ov-${b}`);
-        
-        if(boardWins[b]) {
-            ov.classList.remove('hidden'); bg.classList.add('local-board-won');
-            ov.textContent = boardWins[b] === 'DRAW' ? '➖' : boardWins[b];
-            ov.className = `overlay-bg id-ov-${b} ${boardWins[b]==='X'?'cell-x':boardWins[b]==='O'?'cell-o':'text-slate-400'}`;
-        } else { ov.classList.add('hidden'); bg.classList.remove('local-board-won'); }
+    getEl('turnIndicator').className =
+        `font-extrabold text-base ${
+            currentPlayer === 'X'
+                ? 'cell-x'
+                : 'cell-o'
+        }`;
 
-        let isActive = (activeBoardIndex === -1 || activeBoardIndex === b) && !boardWins[b];
-        bg.classList.remove('active-local-board', 'waiting-local', 'inactive-local');
-        if(isActive) {
-            if(gameMode === 'online' && currentPlayer !== myRole) bg.classList.add('waiting-local');
-            else bg.classList.add('active-local-board');
-        } else bg.classList.add('inactive-local');
+    getEl('scoreX').textContent =
+        scores.X;
 
-        for(let c=0; c<9; c++) {
-            const btn = document.querySelector(`.id-btn-${b}-${c}`);
-            let val = boardStates[b][c];
+    getEl('scoreO').textContent =
+        scores.O;
+
+    for (let b = 0; b < 9; b++) {
+        const bg =
+            document.querySelector(
+                `.id-bg-${b}`
+            );
+
+        const ov =
+            document.querySelector(
+                `.id-ov-${b}`
+            );
+
+        if (boardWins[b]) {
+            ov.classList.remove(
+                'hidden'
+            );
+
+            bg.classList.add(
+                'local-board-won'
+            );
+
+            ov.textContent =
+                boardWins[b] === 'DRAW'
+                    ? '➖'
+                    : boardWins[b];
+
+            ov.className =
+                `overlay-bg id-ov-${b} ${
+                    boardWins[b] === 'X'
+                        ? 'cell-x'
+                        : boardWins[b] === 'O'
+                            ? 'cell-o'
+                            : 'text-slate-400'
+                }`;
+        } else {
+            ov.classList.add(
+                'hidden'
+            );
+
+            bg.classList.remove(
+                'local-board-won'
+            );
+        }
+
+        const isActive =
+            (
+                activeBoardIndex === -1 ||
+                activeBoardIndex === b
+            ) &&
+            !boardWins[b];
+
+        bg.classList.remove(
+            'active-local-board',
+            'waiting-local',
+            'inactive-local'
+        );
+
+        if (isActive) {
+            if (
+                gameMode === 'online' &&
+                currentPlayer !== myRole
+            ) {
+                bg.classList.add(
+                    'waiting-local'
+                );
+            } else {
+                bg.classList.add(
+                    'active-local-board'
+                );
+            }
+        } else {
+            bg.classList.add(
+                'inactive-local'
+            );
+        }
+
+        for (let c = 0; c < 9; c++) {
+            const btn =
+                document.querySelector(
+                    `.id-btn-${b}-${c}`
+                );
+
+            const val =
+                boardStates[b][c];
+
             btn.textContent = val;
-            btn.className = `cell-btn id-btn-${b}-${c} ${val==='X'?'cell-x':val==='O'?'cell-o':''} ${lastMove && lastMove.b===b && lastMove.c===c ? 'last-move-highlight':''}`;
-            btn.disabled = val !== '' || !isActive || isUI_Locked || (gameMode==='online' && currentPlayer!==myRole);
+
+            btn.className =
+                `cell-btn id-btn-${b}-${c} ${
+                    val === 'X'
+                        ? 'cell-x'
+                        : val === 'O'
+                            ? 'cell-o'
+                            : ''
+                } ${
+                    lastMove &&
+                    lastMove.b === b &&
+                    lastMove.c === c
+                        ? 'last-move-highlight'
+                        : ''
+                }`;
+
+            btn.disabled =
+                val !== '' ||
+                !isActive ||
+                isUI_Locked ||
+                (
+                    gameMode === 'online' &&
+                    currentPlayer !== myRole
+                );
         }
     }
 }
 
-function processTurn(b, c, simulatedPlayer) {
-    let p = simulatedPlayer || currentPlayer;
-    boardStates[b][c] = p; lastMove = {b, c};
-    let w = checkSmallWin(boardStates[b]);
-    if(w) { boardWins[b] = w; if(!simulatedPlayer) { playSound('win'); getEl('htmlRoot').classList.add('screen-shake'); setTimeout(()=>getEl('htmlRoot').classList.remove('screen-shake'),300); } }
-    else if(isBoardFull(boardStates[b])) boardWins[b] = 'DRAW';
+function processTurn(
+    b,
+    c,
+    simulatedPlayer
+) {
+    const p =
+        simulatedPlayer ||
+        currentPlayer;
 
-    let uWin = checkUltimateWin();
-    if(uWin || boardWins.every(x=>x!==null)) return handleRoundEnd(uWin);
+    boardStates[b][c] = p;
 
-    if(boardWins[c] !== null || isBoardFull(boardStates[c])) activeBoardIndex = -1;
-    else activeBoardIndex = c;
-    
-    currentPlayer = p === 'X' ? 'O' : 'X';
+    lastMove = {
+        b,
+        c
+    };
+
+    const w =
+        checkSmallWin(
+            boardStates[b]
+        );
+
+    if (w) {
+        boardWins[b] = w;
+
+        if (!simulatedPlayer) {
+            playSound('win');
+
+            getEl('htmlRoot')
+                .classList
+                .add('screen-shake');
+
+            setTimeout(
+                () =>
+                    getEl('htmlRoot')
+                        .classList
+                        .remove(
+                            'screen-shake'
+                        ),
+                300
+            );
+        }
+    }
+
+    else if (
+        isBoardFull(
+            boardStates[b]
+        )
+    ) {
+        boardWins[b] = 'DRAW';
+    }
+
+    const uWin =
+        checkUltimateWin();
+
+    if (
+        uWin ||
+        boardWins.every(
+            x => x !== null
+        )
+    ) {
+        return handleRoundEnd(
+            uWin
+        );
+    }
+
+    if (
+        boardWins[c] !== null ||
+        isBoardFull(
+            boardStates[c]
+        )
+    ) {
+        activeBoardIndex = -1;
+    } else {
+        activeBoardIndex = c;
+    }
+
+    currentPlayer =
+        p === 'X'
+            ? 'O'
+            : 'X';
 }
 
-function handleRoundEnd(winner) {
-    if(winner && winner !== 'DRAW') scores[winner]++;
-    let cupWon = winner && winner !== 'DRAW' && scores[winner] >= targetWins;
-    
-    // Save to Stats
-    if(cupWon || currentFormat === '1') {
-        let isMe = gameMode==='online' ? winner===myRole : winner==='X';
-        if(winner !== 'DRAW') {
-            if(isMe) userStats.wins++; else userStats.losses++;
-        }
-        userStats.points += isMe ? 3 : winner==='DRAW' ? 1 : Math.max(0, userStats.points - 1);
-        userStats.history.push({res: winner==='DRAW' ? 'Draw' : isMe ? 'Win' : 'Loss', opp: opponentName});
-        if(window.db && playerId) window.dbUpdate(window.dbRef(window.db, `players/${playerId}`), userStats);
+async function handleRoundEnd(
+    winner,
+    reason = 'game'
+) {
+    if (
+        winner &&
+        winner !== 'DRAW'
+    ) {
+        scores[winner]++;
     }
-    
+
+    const cupWon =
+        winner &&
+        winner !== 'DRAW' &&
+        scores[winner] >= targetWins;
+
+    if (
+        gameMode === 'online' &&
+        currentMatchId
+    ) {
+        const result =
+            await publishMatchResult(
+                currentMatchId,
+                winner || 'DRAW',
+                reason
+            );
+
+        if (result) {
+            await handleOnlineResult(
+                result,
+                true
+            );
+        }
+
+        isUI_Locked = true;
+
+        getEl('victoryTitle').textContent =
+            winner === 'DRAW'
+                ? 'DRAW!'
+                : `WINNER: ${
+                    winner === myRole
+                        ? playerName
+                        : opponentName
+                }`;
+
+        getEl('victoryText').textContent =
+            cupWon
+                ? `Cup complete. Score: ${scores.X}-${scores.O}`
+                : `Round End! Score: ${scores.X}-${scores.O}`;
+
+        getEl('acceptRematchBtn').textContent =
+            cupWon
+                ? 'Play New Cup'
+                : 'Next Round / Ready';
+
+        getEl('victoryModal').style.display =
+            'flex';
+
+        return;
+    }
+
+    if (
+        cupWon ||
+        currentFormat === '1'
+    ) {
+        const isMe =
+            winner === 'X';
+
+        if (winner !== 'DRAW') {
+            if (isMe) {
+                userStats.wins++;
+            } else {
+                userStats.losses++;
+            }
+
+            userStats.points +=
+                isMe
+                    ? 3
+                    : -1;
+        } else {
+            userStats.points += 1;
+        }
+
+        userStats.history.push({
+            res:
+                winner === 'DRAW'
+                    ? 'Draw'
+                    : isMe
+                        ? 'Win'
+                        : 'Loss',
+
+            opp:
+                opponentName
+        });
+
+        if (
+            window.db &&
+            playerId
+        ) {
+            await window.dbUpdate(
+                window.dbRef(
+                    window.db,
+                    `players/${playerId}`
+                ),
+                userStats
+            );
+        }
+    }
+
     isUI_Locked = true;
-    if(winner && winner!=='DRAW') playSound(cupWon && (gameMode==='online'?winner===myRole:winner==='X') ? 'win':'lose');
-    else playSound('bell');
-    
-    getEl('victoryTitle').textContent = winner==='DRAW' ? 'DRAW!' : `WINNER: ${winner}`;
-    getEl('victoryText').textContent = cupWon ? `Cup Won! Score: ${scores.X}-${scores.O}` : `Round End! Score: ${scores.X}-${scores.O}`;
-    getEl('acceptRematchBtn').textContent = cupWon ? (gameMode==='online'?'Play New Cup':'Play Again') : 'Next Round / Ready';
-    setTimeout(() => getEl('victoryModal').style.display = 'flex', 800);
+
+    if (
+        winner &&
+        winner !== 'DRAW'
+    ) {
+        playSound(
+            winner === 'X'
+                ? 'win'
+                : 'lose'
+        );
+    } else {
+        playSound('bell');
+    }
+
+    getEl('victoryTitle').textContent =
+        winner === 'DRAW'
+            ? 'DRAW!'
+            : `WINNER: ${
+                winner === 'X'
+                    ? playerName
+                    : opponentName
+            }`;
+
+    getEl('victoryText').textContent =
+        cupWon
+            ? `Cup Won! Score: ${scores.X}-${scores.O}`
+            : `Round End! Score: ${scores.X}-${scores.O}`;
+
+    getEl('acceptRematchBtn').textContent =
+        cupWon
+            ? 'Play Again'
+            : 'Next Round / Ready';
+
+    setTimeout(
+        () =>
+            getEl('victoryModal').style.display =
+                'flex',
+        300
+    );
 }
 
-// ==========================================
-// 8. Offline & AI Logic
-// ==========================================
-document.querySelectorAll('.ai-diff-btn').forEach(btn => btn.onclick = (e) => {
-    playSound('start'); aiLevel = e.target.getAttribute('data-level'); gameMode = 'offline'; currentFormat = getEl('matchFormatSelect').value;
-    targetWins = currentFormat === '1' ? 1 : currentFormat === '3' ? 2 : 3;
-    opponentName = `AI (${aiLevel})`; getEl('gameModeBadge').textContent = opponentName; getEl('emojiBar').classList.add('hidden'); getEl('turnTimerContainer').classList.add('hidden');
-    startLocalRound(true); navigate('#game');
-});
 
-function startLocalRound(fullReset) {
-    if(fullReset) scores = {X:0, O:0};
-    boardStates = Array(9).fill().map(()=>Array(9).fill('')); boardWins = Array(9).fill(null);
-    currentPlayer = 'X'; activeBoardIndex = -1; lastMove = null; isUI_Locked = false;
-    getEl('victoryModal').style.display = 'none';
-    initGameHTML(); renderGameUI();
+// ==========================================
+// 18. Offline / AI
+// ==========================================
+
+document
+    .querySelectorAll('.ai-diff-btn')
+    .forEach(btn => {
+        btn.onclick = e => {
+            playSound('start');
+
+            aiLevel =
+                e.target.getAttribute(
+                    'data-level'
+                );
+
+            gameMode =
+                'offline';
+
+            currentFormat =
+                getEl(
+                    'matchFormatSelect'
+                ).value;
+
+            targetWins =
+                currentFormat === '1'
+                    ? 1
+                    : currentFormat === '3'
+                        ? 2
+                        : 3;
+
+            opponentName =
+                `AI (${aiLevel})`;
+
+            getEl(
+                'gameModeBadge'
+            ).textContent =
+                opponentName;
+
+            getEl(
+                'emojiBar'
+            ).classList.add(
+                'hidden'
+            );
+
+            getEl(
+                'turnTimerContainer'
+            ).classList.add(
+                'hidden'
+            );
+
+            startLocalRound(true);
+
+            navigate('#game');
+        };
+    });
+
+function startLocalRound(
+    fullReset
+) {
+    if (fullReset) {
+        scores = {
+            X: 0,
+            O: 0
+        };
+    }
+
+    boardStates =
+        Array(9)
+            .fill()
+            .map(() =>
+                Array(9).fill('')
+            );
+
+    boardWins =
+        Array(9).fill(null);
+
+    currentPlayer = 'X';
+    activeBoardIndex = -1;
+    lastMove = null;
+    isUI_Locked = false;
+
+    getEl(
+        'victoryModal'
+    ).style.display =
+        'none';
+
+    initGameHTML();
+    renderGameUI();
 }
 
 function tryMove(b, c) {
-    if(isUI_Locked || boardStates[b][c] !== '') return;
+    if (
+        isUI_Locked ||
+        boardStates[b][c] !== ''
+    ) {
+        return;
+    }
+
     playSound('click');
-    if(gameMode === 'offline') {
-        processTurn(b, c); renderGameUI();
-        if(!isUI_Locked && currentPlayer === 'O') {
-            isUI_Locked = true; setTimeout(() => { isUI_Locked=false; makeAiMove(); }, 600);
+
+    if (
+        gameMode === 'offline'
+    ) {
+        processTurn(b, c);
+        renderGameUI();
+
+        if (
+            !isUI_Locked &&
+            currentPlayer === 'O'
+        ) {
+            isUI_Locked = true;
+
+            setTimeout(() => {
+                isUI_Locked = false;
+                makeAiMove();
+            }, 600);
         }
+
     } else {
-        isUI_Locked = true; document.querySelector(`.id-btn-${b}-${c}`).classList.add('cell-pending');
-        let tempStates = JSON.parse(JSON.stringify(boardStates)); tempStates[b][c] = myRole;
-        let tempWins = [...boardWins]; let w = checkSmallWin(tempStates[b]); 
-        if(w) tempWins[b] = w; else if(isBoardFull(tempStates[b])) tempWins[b] = 'DRAW';
-        let nxtAct = (tempWins[c] !== null || isBoardFull(tempStates[c])) ? -1 : c;
-        let nxtPl = myRole==='X'?'O':'X';
-        
-        let updates = { boardStates: JSON.stringify(tempStates), boardWins: JSON.stringify(tempWins), activeBoardIndex: nxtAct, currentPlayer: nxtPl, lastMove: {b,c}, lastActive: Date.now() };
-        window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}`), updates).then(()=> isUI_Locked = false);
+        isUI_Locked = true;
+
+        document
+            .querySelector(
+                `.id-btn-${b}-${c}`
+            )
+            .classList
+            .add('cell-pending');
+
+        const tempStates =
+            JSON.parse(
+                JSON.stringify(
+                    boardStates
+                )
+            );
+
+        tempStates[b][c] =
+            myRole;
+
+        const tempWins =
+            [...boardWins];
+
+        const w =
+            checkSmallWin(
+                tempStates[b]
+            );
+
+        if (w) {
+            tempWins[b] = w;
+        }
+
+        else if (
+            isBoardFull(
+                tempStates[b]
+            )
+        ) {
+            tempWins[b] = 'DRAW';
+        }
+
+        const nxtAct =
+            (
+                tempWins[c] !== null ||
+                isBoardFull(
+                    tempStates[c]
+                )
+            )
+                ? -1
+                : c;
+
+        const nxtPl =
+            myRole === 'X'
+                ? 'O'
+                : 'X';
+
+        const updates = {
+            boardStates:
+                JSON.stringify(
+                    tempStates
+                ),
+
+            boardWins:
+                JSON.stringify(
+                    tempWins
+                ),
+
+            activeBoardIndex:
+                nxtAct,
+
+            currentPlayer:
+                nxtPl,
+
+            lastMove: {
+                b,
+                c
+            },
+
+            lastActive:
+                Date.now()
+        };
+
+        window.dbUpdate(
+            window.dbRef(
+                window.db,
+                `matches/${currentMatchId}`
+            ),
+            updates
+        ).then(() => {
+            isUI_Locked = false;
+        });
     }
 }
 
 function makeAiMove() {
-    let tBoards = activeBoardIndex === -1 ? boardWins.map((v,i)=>v===null?i:-1).filter(i=>i!==-1) : [activeBoardIndex];
-    let moves = [];
+    const tBoards =
+        activeBoardIndex === -1
+            ? boardWins
+                .map(
+                    (v, i) =>
+                        v === null
+                            ? i
+                            : -1
+                )
+                .filter(
+                    i => i !== -1
+                )
+            : [activeBoardIndex];
+
+    const moves = [];
+
     tBoards.forEach(b => {
-        for(let c=0; c<9; c++) {
-            if(boardStates[b][c] === '') {
+        for (let c = 0; c < 9; c++) {
+            if (
+                boardStates[b][c] === ''
+            ) {
                 let score = 0;
-                if(aiLevel === 'medium' || aiLevel === 'impossible') {
-                    boardStates[b][c] = 'O'; if(checkSmallWin(boardStates[b])) score += 100; boardStates[b][c] = '';
-                    boardStates[b][c] = 'X'; if(checkSmallWin(boardStates[b])) score += 50; boardStates[b][c] = '';
+
+                if (
+                    aiLevel === 'medium' ||
+                    aiLevel === 'impossible'
+                ) {
+                    boardStates[b][c] =
+                        'O';
+
+                    if (
+                        checkSmallWin(
+                            boardStates[b]
+                        )
+                    ) {
+                        score += 100;
+                    }
+
+                    boardStates[b][c] =
+                        '';
+
+                    boardStates[b][c] =
+                        'X';
+
+                    if (
+                        checkSmallWin(
+                            boardStates[b]
+                        )
+                    ) {
+                        score += 50;
+                    }
+
+                    boardStates[b][c] =
+                        '';
                 }
-                if(aiLevel === 'impossible') {
-                    if(c===4) score+=5; else if([0,2,6,8].includes(c)) score+=2;
+
+                if (
+                    aiLevel ===
+                    'impossible'
+                ) {
+                    if (c === 4) {
+                        score += 5;
+                    }
+
+                    else if (
+                        [
+                            0,
+                            2,
+                            6,
+                            8
+                        ].includes(c)
+                    ) {
+                        score += 2;
+                    }
                 }
-                moves.push({b,c,score: score + Math.random()});
+
+                moves.push({
+                    b,
+                    c,
+                    score:
+                        score +
+                        Math.random()
+                });
             }
         }
     });
-    if(moves.length > 0) {
-        moves.sort((x,y)=>y.score-x.score);
-        let best = moves[0]; processTurn(best.b, best.c); renderGameUI();
-    }
-}
 
-// ==========================================
-// 9. Online Match Engine & Rematch Handshake
-// ==========================================
-function startOnlineMatch(mId, role, oppName, oppId, format) {
-    currentMatchId = mId; myRole = role; opponentName = oppName; opponentId = oppId;
-    gameMode = 'online'; currentFormat = format; targetWins = currentFormat === '1' ? 1 : currentFormat === '3' ? 2 : 3;
-    getEl('gameModeBadge').textContent = `vs ${opponentName}`; getEl('emojiBar').classList.remove('hidden'); getEl('turnTimerContainer').classList.remove('hidden');
-    window.dbUpdate(window.dbRef(window.db, `players/${playerId}`), {status: 'in-game'});
-    initGameHTML(); navigate('#game');
-    
-    if(matchListener) matchListener();
-    matchListener = window.dbOnValue(window.dbRef(window.db, `matches/${mId}`), snap => {
-        let d = snap.val();
-        if(!d) { showCustomAlert('Match Closed', 'The match was terminated.'); return leaveMatch(); }
-        
-        boardStates = JSON.parse(d.boardStates); boardWins = JSON.parse(d.boardWins);
-        activeBoardIndex = d.activeBoardIndex; currentPlayer = d.currentPlayer;
-        lastMove = d.lastMove || null; scores = d.scores || {X:0,O:0};
-        
-        if(d.rematch) {
-            let r = d.rematch;
-            if(r.X && r.O) {
-                if(myRole === 'X') {
-                    window.dbUpdate(window.dbRef(window.db, `matches/${mId}`), {
-                        boardStates: JSON.stringify(Array(9).fill().map(()=>Array(9).fill(''))),
-                        boardWins: JSON.stringify(Array(9).fill(null)),
-                        currentPlayer: 'X', activeBoardIndex: -1, rematch: null, lastMove: null, roundProcessed: false
-                    });
-                }
-            } else {
-                let waitingFor = r.X ? 'O' : 'X';
-                if(waitingFor === myRole) getEl('acceptRematchBtn').textContent = 'Waiting for opponent...';
-            }
-        }
+    if (moves.length > 0) {
+        moves.sort(
+            (x, y) =>
+                y.score - x.score
+        );
 
-        let uWin = checkUltimateWin();
-        if((uWin || boardWins.every(x=>x!==null)) && !d.roundProcessed) {
-            if(myRole === 'X' && uWin) {
-                window.dbUpdate(window.dbRef(window.db, `matches/${mId}`), {roundProcessed: true});
-            }
-            if(!isUI_Locked) handleRoundEnd(uWin);
-        } else if(!uWin && !boardWins.every(x=>x!==null)) {
-            getEl('victoryModal').style.display = 'none'; isUI_Locked = false;
-        }
-        
-        if(d.emoji && d.emoji.sender !== myRole && d.emoji.time > Date.now()-2000) showEmoji(d.emoji.char);
+        const best =
+            moves[0];
 
-        if(d.req === 'forfeit' && d.reqFrom !== myRole) { showCustomAlert('Victory', 'Opponent forfeited!'); leaveMatch(); }
+        processTurn(
+            best.b,
+            best.c
+        );
 
         renderGameUI();
-    });
+    }
 }
 
-function leaveMatch() {
-    getEl('victoryModal').style.display = 'none';
-    if(gameMode === 'online' && currentMatchId && window.db) window.dbRemove(window.dbRef(window.db, `matches/${currentMatchId}`));
-    if(matchListener) { matchListener(); matchListener = null; }
-    currentMatchId = null; window.dbUpdate(window.dbRef(window.db, `players/${playerId}`), {status: 'online'}); navigate('#menu');
+
+// ==========================================
+// 19. Online Match Engine
+// ==========================================
+
+function startOnlineMatch(
+    mId,
+    role,
+    oppName,
+    oppId,
+    format
+) {
+    currentMatchId = mId;
+    myRole = role;
+    opponentName = oppName;
+    opponentId = oppId;
+
+    gameMode = 'online';
+    currentFormat = format;
+
+    targetWins =
+        currentFormat === '1'
+            ? 1
+            : currentFormat === '3'
+                ? 2
+                : 3;
+
+    lastHandledResultId = null;
+
+    getEl(
+        'gameModeBadge'
+    ).textContent =
+        `YOU VS ${opponentName}`;
+
+    getEl(
+        'emojiBar'
+    ).classList.remove(
+        'hidden'
+    );
+
+    getEl(
+        'turnTimerContainer'
+    ).classList.remove(
+        'hidden'
+    );
+
+    window.dbUpdate(
+        window.dbRef(
+            window.db,
+            `players/${playerId}`
+        ),
+        {
+            status: 'in-game'
+        }
+    );
+
+    initGameHTML();
+    navigate('#game');
+
+    if (matchListener) {
+        matchListener();
+    }
+
+    matchListener =
+        window.dbOnValue(
+            window.dbRef(
+                window.db,
+                `matches/${mId}`
+            ),
+            async snap => {
+                const d = snap.val();
+
+                if (!d) {
+                    return leaveMatch(false);
+                }
+
+                boardStates =
+                    JSON.parse(
+                        d.boardStates ||
+                        JSON.stringify(
+                            Array(9)
+                                .fill()
+                                .map(() =>
+                                    Array(9).fill('')
+                                )
+                        )
+                    );
+
+                boardWins =
+                    JSON.parse(
+                        d.boardWins ||
+                        JSON.stringify(
+                            Array(9).fill(null)
+                        )
+                    );
+
+                activeBoardIndex =
+                    d.activeBoardIndex ??
+                    -1;
+
+                currentPlayer =
+                    d.currentPlayer ||
+                    'X';
+
+                lastMove =
+                    d.lastMove ||
+                    null;
+
+                scores =
+                    d.scores ||
+                    {
+                        X: 0,
+                        O: 0
+                    };
+
+                if (d.result) {
+                    isUI_Locked = true;
+
+                    await handleOnlineResult(
+                        d.result,
+                        true
+                    );
+
+                    const mine =
+                        d.result
+                            .players?.[
+                            playerId
+                        ];
+
+                    getEl(
+                        'victoryTitle'
+                    ).textContent =
+                        mine?.outcome === 'Win'
+                            ? 'YOU WON!'
+                            : mine?.outcome === 'Loss'
+                                ? 'YOU LOST'
+                                : 'DRAW!';
+
+                    getEl(
+                        'victoryText'
+                    ).textContent =
+                        d.result.type === 'forfeit'
+                            ? `${
+                                mine?.opponentName ||
+                                opponentName
+                            } left the match.`
+                            : 'Result recorded.';
+
+                    getEl(
+                        'victoryModal'
+                    ).style.display =
+                        'flex';
+
+                    renderGameUI();
+                    return;
+                }
+
+                if (
+                    d.rematch?.X &&
+                    d.rematch?.O &&
+                    d.rematchReset !==
+                        d.rematchToken
+                ) {
+                    if (
+                        myRole === 'X'
+                    ) {
+                        const token =
+                            `${Date.now()}_${Math.random()
+                                .toString(36)
+                                .slice(2, 7)}`;
+
+                        await window.dbUpdate(
+                            window.dbRef(
+                                window.db,
+                                `matches/${mId}`
+                            ),
+                            {
+                                boardStates:
+                                    JSON.stringify(
+                                        Array(9)
+                                            .fill()
+                                            .map(() =>
+                                                Array(9).fill('')
+                                            )
+                                    ),
+
+                                boardWins:
+                                    JSON.stringify(
+                                        Array(9).fill(null)
+                                    ),
+
+                                currentPlayer:
+                                    'X',
+
+                                activeBoardIndex:
+                                    -1,
+
+                                lastMove:
+                                    null,
+
+                                roundProcessed:
+                                    false,
+
+                                rematch:
+                                    null,
+
+                                rematchToken:
+                                    token,
+
+                                rematchReset:
+                                    token
+                            }
+                        );
+                    }
+                }
+
+                const uWin =
+                    checkUltimateWin();
+
+                const isDraw =
+                    !uWin &&
+                    boardWins.every(
+                        x =>
+                            x !== null
+                    );
+
+                if (
+                    (uWin || isDraw) &&
+                    !d.roundProcessed
+                ) {
+                    const roundRef =
+                        window.dbRef(
+                            window.db,
+                            `matches/${mId}`
+                        );
+
+                    const roundTx =
+                        await window.dbTransaction(
+                            roundRef,
+                            current => {
+                                if (
+                                    !current ||
+                                    current.roundProcessed
+                                ) {
+                                    return current;
+                                }
+
+                                current = {
+                                    ...current,
+
+                                    scores: {
+                                        ...(current.scores ||
+                                            {
+                                                X: 0,
+                                                O: 0
+                                            })
+                                    }
+                                };
+
+                                const roundWinner =
+                                    uWin ||
+                                    'DRAW';
+
+                                if (
+                                    roundWinner !==
+                                    'DRAW'
+                                ) {
+                                    current.scores[
+                                        roundWinner
+                                    ] =
+                                        (
+                                            Number(
+                                                current
+                                                    .scores[
+                                                    roundWinner
+                                                ]
+                                            ) || 0
+                                        ) + 1;
+                                }
+
+                                current.roundProcessed =
+                                    true;
+
+                                current.roundWinner =
+                                    roundWinner;
+
+                                current.cupWon =
+                                    roundWinner !==
+                                        'DRAW' &&
+                                    current.scores[
+                                        roundWinner
+                                    ] >=
+                                        targetWins;
+
+                                return current;
+                            }
+                        );
+
+                    const roundData =
+                        roundTx.snapshot.val();
+
+                    if (
+                        roundData?.roundWinner
+                    ) {
+                        const endedCup =
+                            !!roundData.cupWon ||
+                            currentFormat === '1';
+
+                        if (
+                            endedCup
+                        ) {
+                            await publishMatchResult(
+                                mId,
+                                roundData.roundWinner,
+                                'game'
+                            );
+                        } else {
+                            isUI_Locked =
+                                true;
+
+                            getEl(
+                                'victoryTitle'
+                            ).textContent =
+                                roundData.roundWinner ===
+                                    'DRAW'
+                                    ? 'DRAW!'
+                                    : `ROUND WIN: ${
+                                        roundData.roundWinner === myRole
+                                            ? playerName
+                                            : opponentName
+                                    }`;
+
+                            getEl(
+                                'victoryText'
+                            ).textContent =
+                                `Score: ${roundData.scores.X}-${roundData.scores.O}`;
+
+                            getEl(
+                                'acceptRematchBtn'
+                            ).textContent =
+                                'Next Round / Ready';
+
+                            getEl(
+                                'victoryModal'
+                            ).style.display =
+                                'flex';
+                        }
+                    }
+                }
+
+                if (
+                    d.resetRequest &&
+                    d.resetRequest !==
+                        myRole &&
+                    lastResetRequest !==
+                        d.resetRequest
+                ) {
+                    lastResetRequest =
+                        d.resetRequest;
+
+                    showCustomConfirm(
+                        'Reset Requested',
+                        `${opponentName} wants to reset the match. Accept?`,
+                        async () => {
+                            await window.dbUpdate(
+                                window.dbRef(
+                                    window.db,
+                                    `matches/${mId}`
+                                ),
+                                {
+                                    resetAccepted:
+                                        d.resetRequest
+                                }
+                            );
+                        }
+                    );
+                }
+
+                if (
+                    d.resetAccepted &&
+                    d.resetAccepted !==
+                        myRole &&
+                    d.resetRequest ===
+                        myRole
+                ) {
+                    const token =
+                        `${Date.now()}_${Math.random()
+                            .toString(36)
+                            .slice(2, 7)}`;
+
+                    await window.dbUpdate(
+                        window.dbRef(
+                            window.db,
+                            `matches/${mId}`
+                        ),
+                        {
+                            boardStates:
+                                JSON.stringify(
+                                    Array(9)
+                                        .fill()
+                                        .map(() =>
+                                            Array(9).fill('')
+                                        )
+                                ),
+
+                            boardWins:
+                                JSON.stringify(
+                                    Array(9).fill(null)
+                                ),
+
+                            currentPlayer:
+                                'X',
+
+                            activeBoardIndex:
+                                -1,
+
+                            lastMove:
+                                null,
+
+                            roundProcessed:
+                                false,
+
+                            rematch:
+                                null,
+
+                            resetRequest:
+                                null,
+
+                            resetAccepted:
+                                null,
+
+                            resetToken:
+                                token
+                        }
+                    );
+                }
+
+                if (
+                    d.emoji &&
+                    d.emoji.sender !==
+                        myRole &&
+                    d.emoji.time >
+                        Date.now() - 2000
+                ) {
+                    showEmoji(
+                        d.emoji.char
+                    );
+                }
+
+                renderGameUI();
+            }
+        );
 }
 
-getEl('surrenderBtn').onclick = () => {
-    if(gameMode==='offline') { scores[myRole==='X'?'O':'X'] = targetWins; handleRoundEnd(myRole==='X'?'O':'X'); }
-    else showCustomConfirm('Forfeit?', 'Give up this match?', () => { window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}`), {req: 'forfeit', reqFrom: myRole}); leaveMatch(); });
-};
+async function requestExit() {
+    if (
+        gameMode !== 'online' ||
+        !currentMatchId
+    ) {
+        return leaveMatch();
+    }
 
-getEl('resetMatchBtn').onclick = () => {
-    if(gameMode==='offline') startLocalRound(false);
-    else { window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}/rematch`), { [myRole]: true }); }
-};
+    showCustomConfirm(
+        'Leave Match?',
+        'Are you sure you want to leave? The opponent will win and you will lose 1 point.',
+        async () => {
+            const result =
+                await publishMatchResult(
+                    currentMatchId,
+                    myRole === 'X'
+                        ? 'O'
+                        : 'X',
+                    'forfeit'
+                );
 
-getEl('acceptRematchBtn').onclick = () => {
-    playSound('click');
-    if(gameMode === 'offline') startLocalRound(scores.X>=targetWins || scores.O>=targetWins);
-    else {
-        getEl('acceptRematchBtn').textContent = 'Waiting...';
-        window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}/rematch`), { [myRole]: true });
+            if (result) {
+                await handleOnlineResult(
+                    result,
+                    true
+                );
+            }
+        }
+    );
+}
+
+function leaveMatch(
+    removeRoom = true
+) {
+    getEl(
+        'victoryModal'
+    ).style.display =
+        'none';
+
+    if (matchListener) {
+        matchListener();
+        matchListener = null;
+    }
+
+    const oldMatch =
+        currentMatchId;
+
+    currentMatchId = null;
+
+    if (
+        window.db &&
+        playerId
+    ) {
+        window.dbUpdate(
+            window.dbRef(
+                window.db,
+                `players/${playerId}`
+            ),
+            {
+                status: 'online'
+            }
+        );
+    }
+
+    if (
+        removeRoom &&
+        oldMatch &&
+        gameMode === 'online' &&
+        window.db
+    ) {
+        window.dbRemove(
+            window.dbRef(
+                window.db,
+                `matches/${oldMatch}`
+            )
+        );
+    }
+
+    navigate('#menu');
+}
+
+
+// ==========================================
+// 20. Forfeit / Reset / Rematch
+// ==========================================
+
+getEl(
+    'surrenderBtn'
+).onclick = () => {
+    if (
+        gameMode === 'offline'
+    ) {
+        scores[
+            myRole === 'X'
+                ? 'O'
+                : 'X'
+        ] =
+            targetWins;
+
+        handleRoundEnd(
+            myRole === 'X'
+                ? 'O'
+                : 'X',
+            'forfeit'
+        );
+
+    } else {
+        showCustomConfirm(
+            'Leave Match?',
+            'Are you sure you want to leave? The opponent will win and you will lose 1 point.',
+            async () => {
+                if (!currentMatchId) {
+                    return;
+                }
+
+                await publishMatchResult(
+                    currentMatchId,
+                    myRole === 'X'
+                        ? 'O'
+                        : 'X',
+                    'forfeit'
+                );
+            }
+        );
     }
 };
 
-document.querySelectorAll('.emoji-btn').forEach(btn => btn.onclick = (e) => {
-    if(emojiCooldown) return; emojiCooldown = true; setTimeout(()=>emojiCooldown=false, 3000);
-    let char = e.target.textContent; showEmoji(char); playSound('click');
-    if(gameMode === 'online') window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}`), { emoji: { char, sender: myRole, time: Date.now() } });
-});
+getEl(
+    'resetMatchBtn'
+).onclick = () => {
+    if (
+        gameMode === 'offline'
+    ) {
+        startLocalRound(false);
+
+    } else {
+        showCustomConfirm(
+            'Reset Match?',
+            'Send a reset request to your opponent?',
+            async () => {
+                if (!currentMatchId) {
+                    return;
+                }
+
+                await window.dbUpdate(
+                    window.dbRef(
+                        window.db,
+                        `matches/${currentMatchId}`
+                    ),
+                    {
+                        resetRequest:
+                            myRole
+                    }
+                );
+
+                showCustomAlert(
+                    'Reset Requested',
+                    'Waiting for your opponent to accept.'
+                );
+            }
+        );
+    }
+};
+
+getEl(
+    'acceptRematchBtn'
+).onclick = () => {
+    playSound('click');
+
+    if (
+        gameMode === 'offline'
+    ) {
+        startLocalRound(
+            scores.X >= targetWins ||
+            scores.O >= targetWins
+        );
+
+    } else {
+        getEl(
+            'acceptRematchBtn'
+        ).textContent =
+            'Waiting...';
+
+        window.dbUpdate(
+            window.dbRef(
+                window.db,
+                `matches/${currentMatchId}/rematch`
+            ),
+            {
+                [myRole]: true
+            }
+        );
+    }
+};
+
+
+// ==========================================
+// 21. Emojis
+// ==========================================
+
+document
+    .querySelectorAll('.emoji-btn')
+    .forEach(btn => {
+        btn.onclick = e => {
+            if (emojiCooldown) {
+                return;
+            }
+
+            emojiCooldown = true;
+
+            setTimeout(
+                () =>
+                    emojiCooldown = false,
+                3000
+            );
+
+            const char =
+                e.target.textContent;
+
+            showEmoji(char);
+            playSound('click');
+
+            if (
+                gameMode === 'online'
+            ) {
+                window.dbUpdate(
+                    window.dbRef(
+                        window.db,
+                        `matches/${currentMatchId}`
+                    ),
+                    {
+                        emoji: {
+                            char,
+                            sender: myRole,
+                            time: Date.now()
+                        }
+                    }
+                );
+            }
+        };
+    });
 
 function showEmoji(char) {
-    let el = getEl('floatingEmoji'); el.textContent = char;
-    el.classList.remove('opacity-0', '-translate-y-1/2'); el.classList.add('opacity-100', '-translate-y-[200px]');
-    setTimeout(() => { el.classList.add('opacity-0', '-translate-y-1/2'); el.classList.remove('opacity-100', '-translate-y-[200px]'); }, 1500);
+    const el =
+        getEl('floatingEmoji');
+
+    el.textContent = char;
+
+    el.classList.remove(
+        'opacity-0',
+        '-translate-y-1/2'
+    );
+
+    el.classList.add(
+        'opacity-100',
+        '-translate-y-[200px]'
+    );
+
+    setTimeout(() => {
+        el.classList.add(
+            'opacity-0',
+            '-translate-y-1/2'
+        );
+
+        el.classList.remove(
+            'opacity-100',
+            '-translate-y-[200px]'
+        );
+    }, 1500);
 }

@@ -1,7 +1,6 @@
-/* Color Themes Configuration */
 .theme-cyberpunk {
-    --bg-color: rgba(3, 7, 18, 0.94);
-    --card-bg: rgba(15, 23, 42, 0.92);
+    --bg-color: rgba(3, 7, 18, 0.95);
+    --card-bg: rgba(15, 23, 42, 0.94);
     --primary: #06b6d4;
     --secondary: #3b82f6;
     --accent: #10b981;
@@ -10,8 +9,8 @@
 }
 
 .theme-matrix {
-    --bg-color: rgba(2, 28, 22, 0.95);
-    --card-bg: rgba(2, 44, 34, 0.92);
+    --bg-color: rgba(2, 28, 22, 0.96);
+    --card-bg: rgba(2, 44, 34, 0.94);
     --primary: #22c55e;
     --secondary: #10b981;
     --accent: #84cc16;
@@ -21,7 +20,7 @@
 
 .theme-obsidian {
     --bg-color: rgba(9, 9, 11, 0.96);
-    --card-bg: rgba(24, 24, 27, 0.92);
+    --card-bg: rgba(24, 24, 27, 0.94);
     --primary: #f43f5e;
     --secondary: #fb7185;
     --accent: #e11d48;
@@ -30,8 +29,8 @@
 }
 
 .theme-vaporwave {
-    --bg-color: rgba(30, 10, 65, 0.95);
-    --card-bg: rgba(46, 16, 101, 0.92);
+    --bg-color: rgba(30, 10, 65, 0.96);
+    --card-bg: rgba(46, 16, 101, 0.94);
     --primary: #ec4899;
     --secondary: #d946ef;
     --accent: #8b5cf6;
@@ -39,21 +38,18 @@
     --border-color: rgba(236, 72, 153, 0.35);
 }
 
-/* Base Styles */
 body.app-shell {
     background-color: var(--bg-color);
     color: var(--text-color);
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    transition: background-color 0.4s ease;
+    min-height: 100dvh;
 }
 
-/* Security Hack for Password Field to avoid Browser auto-fill prompts */
 .password-disc {
     -webkit-text-security: disc;
     text-security: disc;
 }
 
-/* UI Elements */
 .modal-box {
     background-color: var(--card-bg);
     border-color: var(--border-color);
@@ -86,7 +82,6 @@ body.app-shell {
     backdrop-filter: blur(12px);
 }
 
-/* Ultimate Board Grids */
 .ultimate-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -107,7 +102,6 @@ body.app-shell {
     transition: all 0.3s ease;
 }
 
-/* Cell Button */
 .cell-btn {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.05);
@@ -126,12 +120,10 @@ body.app-shell {
     border-color: var(--primary);
 }
 
-/* Game States & Player Colors */
 .cell-x { color: var(--primary); text-shadow: 0 0 10px var(--primary); }
 .cell-o { color: #ec4899; text-shadow: 0 0 10px #ec4899; }
 .cell-pending { opacity: 0.5; cursor: wait !important; }
 
-/* Active Board Highlights */
 .active-local-board {
     border-color: var(--primary) !important;
     box-shadow: 0 0 20px rgba(6, 182, 212, 0.4);
@@ -141,8 +133,7 @@ body.app-shell {
 .waiting-local { border-color: rgba(255, 255, 255, 0.1); opacity: 0.6; }
 .inactive-local { opacity: 0.4; }
 
-/* Board Won Overlay */
-.local-board-won { border-color: rgba(255,255,255,0.1) !important; opacity: 0.85; }
+.local-board-won { border-color: rgba(255,255,255,0.1) !important; opacity: 0.8; }
 .overlay-bg {
     position: absolute; inset: 0;
     background: rgba(0, 0, 0, 0.85);
@@ -155,7 +146,6 @@ body.app-shell {
     pointer-events: none;
 }
 
-/* Last Move Animation */
 .last-move-highlight {
     border: 2px solid #fbbf24 !important;
     animation: pulse-border 1.2s infinite;
@@ -166,7 +156,6 @@ body.app-shell {
     100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0); }
 }
 
-/* Screen Shake for small wins */
 .screen-shake { animation: shake 0.3s cubic-bezier(.36,.07,.19,.97) both; }
 @keyframes shake {
     10%, 90% { transform: translate3d(-2px, 0, 0); }

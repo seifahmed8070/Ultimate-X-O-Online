@@ -1,5 +1,5 @@
 // ==========================================
-// 1. Audio System & Background Canvas
+// 1. Audio & Glowing X/O Canvas Background
 // ==========================================
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 function playSound(type) {
@@ -22,19 +22,20 @@ function playSound(type) {
 }
 
 const bgCanvas = document.getElementById('bgCanvas'); const bgCtx = bgCanvas.getContext('2d');
-let bgParticles = [], isConfetti = false;
+let bgParticles = [];
 function resizeBg() { bgCanvas.width = window.innerWidth; bgCanvas.height = window.innerHeight; }
 window.addEventListener('resize', resizeBg); resizeBg();
-for (let i = 0; i < 30; i++) bgParticles.push({ x: Math.random() * bgCanvas.width, y: Math.random() * bgCanvas.height, size: Math.random() * 15 + 10, speedY: Math.random() * 0.5 + 0.2, char: Math.random() > 0.5 ? 'X' : 'O', rot: 0, rSpeed: (Math.random() - 0.5) * 0.02 });
+for (let i = 0; i < 18; i++) bgParticles.push({ x: Math.random() * bgCanvas.width, y: Math.random() * bgCanvas.height, size: Math.random() * 28 + 24, speedY: Math.random() * 0.4 + 0.1, char: Math.random() > 0.5 ? 'X' : 'O', rot: Math.random() * Math.PI, rSpeed: (Math.random() - 0.5) * 0.01 });
 function animateBg() {
     bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
     const primary = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#06b6d4';
     bgParticles.forEach(p => {
-        p.y -= isConfetti ? -(Math.random() * 3 + 2) : p.speedY; p.rot += p.rSpeed;
-        if (p.y < -50 || p.y > bgCanvas.height + 50) { p.y = isConfetti ? -50 : bgCanvas.height + 50; p.x = Math.random() * bgCanvas.width; }
+        p.y -= p.speedY; p.rot += p.rSpeed;
+        if (p.y < -50) { p.y = bgCanvas.height + 50; p.x = Math.random() * bgCanvas.width; }
         bgCtx.save(); bgCtx.translate(p.x, p.y); bgCtx.rotate(p.rot);
-        bgCtx.fillStyle = isConfetti ? `hsl(${Math.random()*360}, 100%, 50%)` : primary;
-        bgCtx.globalAlpha = isConfetti ? 0.8 : 0.05; bgCtx.font = `bold ${p.size}px sans-serif`; bgCtx.fillText(isConfetti ? '🎊' : p.char, 0, 0);
+        bgCtx.fillStyle = primary; bgCtx.globalAlpha = 0.08;
+        bgCtx.font = `900 ${p.size}px sans-serif`; bgCtx.textAlign = 'center'; bgCtx.textBaseline = 'middle';
+        bgCtx.fillText(p.char, 0, 0);
         bgCtx.restore();
     });
     requestAnimationFrame(animateBg);
@@ -51,27 +52,25 @@ let sessionId = 's_' + Math.random().toString(36).substr(2, 9);
 let gameMode = 'offline', aiLevel = 'medium', currentFormat = '1', targetWins = 1;
 let currentMatchId = null, myRole = 'X', opponentName = 'Opponent', opponentId = null;
 let boardWins = Array(9).fill(null), boardStates = Array(9).fill().map(() => Array(9).fill(''));
-let activeBoardIndex = null, currentPlayer = 'X', scores = { X: 0, O: 0 }, lastMove = null, isUI_Locked = false;
+let activeBoardIndex = -1, currentPlayer = 'X', scores = { X: 0, O: 0 }, lastMove = null, isUI_Locked = false;
 let userStats = { points: 0, wins: 0, losses: 0, history: [] };
 
-// Listeners
-let matchListener = null, onlinePresenceListener = null, challengeListener = null, turnTimerInt = null;
-const TURN_TIME_LIMIT = 120; let currentTurnTime = TURN_TIME_LIMIT; let emojiCooldown = false;
+let matchListener = null, challengeListener = null, turnTimerInt = null;
+const TURN_TIME_LIMIT = 120; let emojiCooldown = false;
 
-// Helpers
 const getEl = id => document.getElementById(id);
+function showCustomAlert(title, text) {
+    playSound('click'); getEl('customModalTitle').textContent = title; getEl('customModalText').textContent = text;
+    getEl('customModalButtons').innerHTML = `<button id="cmOk" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white cursor-pointer">OK</button>`;
+    getEl('customModal').style.display = 'flex';
+    getEl('cmOk').onclick = () => getEl('customModal').style.display = 'none';
+}
 function showCustomConfirm(title, text, onConfirm) {
     playSound('click'); getEl('customModalTitle').textContent = title; getEl('customModalText').textContent = text;
-    getEl('customModalButtons').innerHTML = `<button id="cmYes" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white">Yes</button><button id="cmNo" class="w-full bg-rose-600 text-white font-bold py-3 rounded-xl text-sm">No</button>`;
+    getEl('customModalButtons').innerHTML = `<button id="cmYes" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white cursor-pointer">Yes</button><button id="cmNo" class="w-full bg-rose-600 text-white font-bold py-3 rounded-xl text-sm cursor-pointer">No</button>`;
     getEl('customModal').style.display = 'flex';
     getEl('cmYes').onclick = () => { getEl('customModal').style.display = 'none'; onConfirm(); };
     getEl('cmNo').onclick = () => { getEl('customModal').style.display = 'none'; };
-}
-function showCustomAlert(title, text) {
-    playSound('click'); getEl('customModalTitle').textContent = title; getEl('customModalText').textContent = text;
-    getEl('customModalButtons').innerHTML = `<button id="cmOk" class="w-full py-3 rounded-xl font-bold text-sm bg-cyan-600 text-white">OK</button>`;
-    getEl('customModal').style.display = 'flex';
-    getEl('cmOk').onclick = () => getEl('customModal').style.display = 'none';
 }
 
 // ==========================================
@@ -143,7 +142,7 @@ getEl('authSubmitBtn').onclick = async () => {
     if (isRegister) {
         if (exists) return showCustomAlert('Taken', 'Name exists. Try logging in.');
         playerId = 'p_' + Math.random().toString(36).substr(2, 9);
-        playerName = name; playerPin = pin; userStats.points = 0;
+        playerName = name; playerPin = pin; userStats = { points: 0, wins: 0, losses: 0, history: [] };
     } else {
         if (!exists || pData.pin !== pin) return showCustomAlert('Failed', 'Invalid name or PIN.');
         playerId = matchedId; playerName = pData.name; playerPin = pData.pin; 
@@ -159,7 +158,6 @@ function setupPresence() {
     const ref = window.dbRef(window.db, 'players/' + playerId);
     window.dbOnDisconnect(ref).update({ status: 'offline', lastActive: Date.now() });
     
-    // Multi-login protection
     window.dbOnValue(window.dbRef(window.db, `players/${playerId}/sessionId`), snap => {
         if(snap.exists() && snap.val() !== sessionId) {
             localStorage.clear(); alert("Logged in from another device!"); window.location.reload();
@@ -174,7 +172,6 @@ function setupPresence() {
         else updatePresence('offline');
     });
 
-    // Listen for challenges
     if(!challengeListener) {
         challengeListener = window.dbOnValue(window.dbRef(window.db, 'challenges/' + playerId), snap => {
             const data = snap.val();
@@ -183,7 +180,6 @@ function setupPresence() {
     }
 }
 
-// Auto Login check on load
 window.addEventListener('firebase-ready', async () => {
     if(playerId) {
         const snap = await window.dbGet(window.dbRef(window.db, `players/${playerId}`));
@@ -217,7 +213,7 @@ function loadProfileData() {
     getEl('statLosses').textContent = userStats.losses;
     
     const hl = getEl('matchHistoryList'); hl.innerHTML = '';
-    if(!userStats.history || userStats.history.length === 0) hl.innerHTML = '<p class="text-slate-500 text-center py-4">No matches yet.</p>';
+    if(!userStats.history || userStats.history.length === 0) hl.innerHTML = '<p class="text-slate-500 text-center py-2">No matches yet.</p>';
     else {
         [...userStats.history].reverse().slice(0,5).forEach(m => {
             hl.innerHTML += `<li class="flex justify-between items-center bg-black/40 p-2 rounded-lg border border-white/5"><span class="${m.res==='Win'?'text-emerald-400':m.res==='Loss'?'text-rose-400':'text-amber-400'} font-bold">${m.res}</span> <span class="text-slate-300">vs ${m.opp}</span></li>`;
@@ -233,6 +229,20 @@ getEl('updatePinBtn').onclick = () => {
     playerPin = n; localStorage.setItem('playerPin', n);
     window.dbUpdate(window.dbRef(window.db, `players/${playerId}`), { pin: n });
     showCustomAlert('Success', 'PIN updated safely.'); getEl('updateOldPin').value = ''; getEl('updateNewPin').value = '';
+};
+
+getEl('deleteAccountBtn').onclick = () => {
+    if(currentMatchId) return showCustomAlert('Blocked', 'Cannot delete account during a match.');
+    let pinInput = getEl('deleteAccountPin').value;
+    if(pinInput !== playerPin) return showCustomAlert('Error', 'Incorrect PIN. Deletion cancelled.');
+    
+    showCustomConfirm('Delete Account', 'Are you sure you want to delete your account permanently?', async () => {
+        if(window.db && playerId) {
+            await window.dbRemove(window.dbRef(window.db, `players/${playerId}`));
+            await window.dbRemove(window.dbRef(window.db, `challenges/${playerId}`));
+        }
+        localStorage.clear(); window.location.reload();
+    });
 };
 
 function fetchLeaderboard() {
@@ -254,7 +264,6 @@ getEl('refreshLobbyBtn').onclick = () => { playSound('click'); fetchOnlinePlayer
 
 function fetchOnlinePlayers() {
     if(!window.db) return;
-    // Garbage collector for ghost matches
     window.dbGet(window.dbRef(window.db, 'matches')).then(snap => {
         if(snap.exists()) {
             const now = Date.now(); snap.forEach(c => {
@@ -273,7 +282,7 @@ function fetchOnlinePlayers() {
             list.innerHTML += `<div class="flex justify-between items-center p-3 bg-black/40 rounded-xl border border-white/10 text-sm">
                 <span class="font-bold capitalize truncate max-w-[120px]"><span class="${isIngame?'text-rose-500':'text-emerald-500'}">●</span> ${u.name}</span>
                 ${isIngame ? `<span class="text-[10px] text-rose-400 border border-rose-500/30 px-2 py-1 rounded bg-rose-900/30">In-Game</span>` 
-                           : `<button onclick="sendChallenge('${c.key}', '${u.name}')" class="bg-cyan-700 hover:bg-cyan-600 px-3 py-1.5 rounded-lg font-bold text-xs shadow-md">Challenge</button>`}
+                           : `<button onclick="sendChallenge('${c.key}', '${u.name}')" class="bg-cyan-700 hover:bg-cyan-600 px-3 py-1.5 rounded-lg font-bold text-xs shadow-md cursor-pointer">Challenge</button>`}
             </div>`;
         });
         if(!found) list.innerHTML = '<p class="text-slate-500 text-center py-4 text-xs">No one is online.</p>';
@@ -284,10 +293,9 @@ function sendChallenge(tId, tName) {
     playSound('bell');
     const format = getEl('matchFormatSelect').value;
     const mId = [playerId, tId].sort().join('_');
-    window.dbSet(window.dbRef(window.db, `challenges/${tId}`), { fromId: playerId, fromName: playerName, matchId: mId, status: 'pending', format: format });
+    window.dbSet(window.dbRef(window.db, `challenges/${tId}`), { fromId: playerId, fromName: playerName, matchId: mId, status: 'pending', format: format, time: Date.now() });
     showCustomAlert('Sent!', `Waiting for ${tName} to accept...`);
     
-    // Listen for their response
     const ref = window.dbRef(window.db, `challenges/${tId}`);
     window.dbOnValue(ref, snap => {
         let d = snap.val();
@@ -298,6 +306,7 @@ function sendChallenge(tId, tName) {
 
 let activeIncoming = null;
 function showIncomingChallenge(data) {
+    if(Date.now() - (data.time || 0) > 30000) { window.dbRemove(window.dbRef(window.db, `challenges/${playerId}`)); return; }
     activeIncoming = data;
     getEl('challengeText').textContent = `${data.fromName} challenges you to [${data.format==='1'?'Single':data.format==='3'?'BO3':'BO5'}]`;
     getEl('challengeModal').style.display = 'flex';
@@ -307,7 +316,7 @@ getEl('acceptChallengeBtn').onclick = () => {
     if(activeIncoming) {
         window.dbSet(window.dbRef(window.db, `matches/${activeIncoming.matchId}`), {
             format: activeIncoming.format, scores: {X:0,O:0}, boardStates: JSON.stringify(Array(9).fill().map(()=>Array(9).fill(''))), boardWins: JSON.stringify(Array(9).fill(null)),
-            currentPlayer: 'X', activeBoardIndex: -1, lastActive: Date.now()
+            currentPlayer: 'X', activeBoardIndex: -1, lastActive: Date.now(), roundProcessed: false
         });
         window.dbUpdate(window.dbRef(window.db, `challenges/${playerId}`), {status: 'accepted'});
         startOnlineMatch(activeIncoming.matchId, 'O', activeIncoming.fromName, activeIncoming.fromId, activeIncoming.format);
@@ -334,7 +343,6 @@ function checkUltimateWin() {
     return null;
 }
 
-// Build DOM once
 function initGameHTML() {
     const ub = getEl('ultimateBoard'); ub.innerHTML = '';
     for(let b=0; b<9; b++) {
@@ -350,7 +358,6 @@ function initGameHTML() {
     }
 }
 
-// Fast DOM Update
 function renderGameUI() {
     getEl('turnIndicator').textContent = currentPlayer;
     getEl('turnIndicator').className = `font-extrabold text-base ${currentPlayer==='X'?'cell-x':'cell-o'}`;
@@ -360,14 +367,12 @@ function renderGameUI() {
         const bg = document.querySelector(`.id-bg-${b}`);
         const ov = document.querySelector(`.id-ov-${b}`);
         
-        // Handle Overlay (Win/Draw)
         if(boardWins[b]) {
             ov.classList.remove('hidden'); bg.classList.add('local-board-won');
             ov.textContent = boardWins[b] === 'DRAW' ? '➖' : boardWins[b];
             ov.className = `overlay-bg id-ov-${b} ${boardWins[b]==='X'?'cell-x':boardWins[b]==='O'?'cell-o':'text-slate-400'}`;
         } else { ov.classList.add('hidden'); bg.classList.remove('local-board-won'); }
 
-        // Handle Active State
         let isActive = (activeBoardIndex === -1 || activeBoardIndex === b) && !boardWins[b];
         bg.classList.remove('active-local-board', 'waiting-local', 'inactive-local');
         if(isActive) {
@@ -375,7 +380,6 @@ function renderGameUI() {
             else bg.classList.add('active-local-board');
         } else bg.classList.add('inactive-local');
 
-        // Handle Cells
         for(let c=0; c<9; c++) {
             const btn = document.querySelector(`.id-btn-${b}-${c}`);
             let val = boardStates[b][c];
@@ -390,13 +394,12 @@ function processTurn(b, c, simulatedPlayer) {
     let p = simulatedPlayer || currentPlayer;
     boardStates[b][c] = p; lastMove = {b, c};
     let w = checkSmallWin(boardStates[b]);
-    if(w) { boardWins[b] = w; if(!simulatedPlayer) { isConfetti=false; playSound('win'); getEl('htmlRoot').classList.add('screen-shake'); setTimeout(()=>getEl('htmlRoot').classList.remove('screen-shake'),300); } }
+    if(w) { boardWins[b] = w; if(!simulatedPlayer) { playSound('win'); getEl('htmlRoot').classList.add('screen-shake'); setTimeout(()=>getEl('htmlRoot').classList.remove('screen-shake'),300); } }
     else if(isBoardFull(boardStates[b])) boardWins[b] = 'DRAW';
 
     let uWin = checkUltimateWin();
     if(uWin || boardWins.every(x=>x!==null)) return handleRoundEnd(uWin);
 
-    // KEY FIX: If target board is won OR full, free play (-1)
     if(boardWins[c] !== null || isBoardFull(boardStates[c])) activeBoardIndex = -1;
     else activeBoardIndex = c;
     
@@ -407,22 +410,13 @@ function handleRoundEnd(winner) {
     if(winner && winner !== 'DRAW') scores[winner]++;
     let cupWon = winner && winner !== 'DRAW' && scores[winner] >= targetWins;
     
-    // Save to Stats
-    if(cupWon) {
-        let isMe = gameMode==='online' ? winner===myRole : winner==='X';
-        if(isMe) userStats.wins++; else userStats.losses++;
-        userStats.points += isMe ? 3 : winner==='DRAW' ? 1 : Math.max(0, userStats.points - 1);
-        userStats.history.push({res: isMe ? 'Win' : 'Loss', opp: opponentName});
-        if(window.db && playerId) window.dbUpdate(window.dbRef(window.db, `players/${playerId}`), userStats);
-    }
-    
     isUI_Locked = true;
-    if(winner && winner!=='DRAW') { isConfetti=cupWon; playSound(cupWon && (gameMode==='online'?winner===myRole:winner==='X') ? 'win':'lose'); }
+    if(winner && winner!=='DRAW') playSound(cupWon && (gameMode==='online'?winner===myRole:winner==='X') ? 'win':'lose');
     else playSound('bell');
     
     getEl('victoryTitle').textContent = winner==='DRAW' ? 'DRAW!' : `WINNER: ${winner}`;
     getEl('victoryText').textContent = cupWon ? `Cup Won! Score: ${scores.X}-${scores.O}` : `Round End! Score: ${scores.X}-${scores.O}`;
-    getEl('acceptRematchBtn').textContent = cupWon ? (gameMode==='online'?'Play New Cup':'Play Again') : 'Next Round';
+    getEl('acceptRematchBtn').textContent = cupWon ? (gameMode==='online'?'Play New Cup':'Play Again') : 'Next Round / Ready';
     setTimeout(() => getEl('victoryModal').style.display = 'flex', 800);
 }
 
@@ -439,7 +433,7 @@ document.querySelectorAll('.ai-diff-btn').forEach(btn => btn.onclick = (e) => {
 function startLocalRound(fullReset) {
     if(fullReset) scores = {X:0, O:0};
     boardStates = Array(9).fill().map(()=>Array(9).fill('')); boardWins = Array(9).fill(null);
-    currentPlayer = 'X'; activeBoardIndex = -1; lastMove = null; isUI_Locked = false; isConfetti = false;
+    currentPlayer = 'X'; activeBoardIndex = -1; lastMove = null; isUI_Locked = false;
     getEl('victoryModal').style.display = 'none';
     initGameHTML(); renderGameUI();
 }
@@ -453,7 +447,6 @@ function tryMove(b, c) {
             isUI_Locked = true; setTimeout(() => { isUI_Locked=false; makeAiMove(); }, 600);
         }
     } else {
-        // Online Logic
         isUI_Locked = true; document.querySelector(`.id-btn-${b}-${c}`).classList.add('cell-pending');
         let tempStates = JSON.parse(JSON.stringify(boardStates)); tempStates[b][c] = myRole;
         let tempWins = [...boardWins]; let w = checkSmallWin(tempStates[b]); 
@@ -466,7 +459,6 @@ function tryMove(b, c) {
     }
 }
 
-// AI Engine
 function makeAiMove() {
     let tBoards = activeBoardIndex === -1 ? boardWins.map((v,i)=>v===null?i:-1).filter(i=>i!==-1) : [activeBoardIndex];
     let moves = [];
@@ -475,26 +467,13 @@ function makeAiMove() {
             if(boardStates[b][c] === '') {
                 let score = 0;
                 if(aiLevel === 'medium' || aiLevel === 'impossible') {
-                    // Win local
                     boardStates[b][c] = 'O'; if(checkSmallWin(boardStates[b])) score += 100; boardStates[b][c] = '';
-                    // Block local
                     boardStates[b][c] = 'X'; if(checkSmallWin(boardStates[b])) score += 50; boardStates[b][c] = '';
                 }
                 if(aiLevel === 'impossible') {
-                    // Center/Corner heuristic
                     if(c===4) score+=5; else if([0,2,6,8].includes(c)) score+=2;
-                    // Where does this send the opponent?
-                    if(boardWins[c] === null) {
-                        let oppEmpty = 0; for(let i=0;i<9;i++) if(boardStates[c][i]==='') oppEmpty++;
-                        // Avoid sending to a board where opp can win
-                        for(let i=0;i<9;i++) {
-                            if(boardStates[c][i]==='') {
-                                boardStates[c][i] = 'X'; if(checkSmallWin(boardStates[c])) score -= 80; boardStates[c][i] = '';
-                            }
-                        }
-                    } else score += 10; // Sending to a dead board is good (forces them to open play, though risky if we are defensive)
                 }
-                moves.push({b,c,score: aiLevel==='easy'? Math.random(): score + Math.random()}); // rand for tiebreak
+                moves.push({b,c,score: score + Math.random()});
             }
         }
     });
@@ -505,7 +484,7 @@ function makeAiMove() {
 }
 
 // ==========================================
-// 9. Online Match Engine & Chat
+// 9. Online Match Engine & Rematch Handshake
 // ==========================================
 function startOnlineMatch(mId, role, oppName, oppId, format) {
     currentMatchId = mId; myRole = role; opponentName = oppName; opponentId = oppId;
@@ -521,55 +500,46 @@ function startOnlineMatch(mId, role, oppName, oppId, format) {
         
         boardStates = JSON.parse(d.boardStates); boardWins = JSON.parse(d.boardWins);
         activeBoardIndex = d.activeBoardIndex; currentPlayer = d.currentPlayer;
-        lastMove = d.lastMove || null; scores = d.scores;
+        lastMove = d.lastMove || null; scores = d.scores || {X:0,O:0};
         
-        // Timer sync
-        currentTurnTime = TURN_TIME_LIMIT; clearInterval(turnTimerInt); startTurnTimer();
+        // Two-way Handshake for Rematch / Reset
+        if(d.rematch) {
+            let r = d.rematch;
+            if(r.X && r.O) {
+                // Both ready! Reset board
+                if(myRole === 'X') {
+                    window.dbUpdate(window.dbRef(window.db, `matches/${mId}`), {
+                        boardStates: JSON.stringify(Array(9).fill().map(()=>Array(9).fill(''))),
+                        boardWins: JSON.stringify(Array(9).fill(null)),
+                        currentPlayer: 'X', activeBoardIndex: -1, rematch: null, lastMove: null, roundProcessed: false
+                    });
+                }
+            } else {
+                let waitingFor = r.X ? 'O' : 'X';
+                if(waitingFor === myRole) getEl('acceptRematchBtn').textContent = 'Waiting for opponent...';
+            }
+        }
 
-        // Check global win externally to avoid client race
         let uWin = checkUltimateWin();
-        if(uWin || boardWins.every(x=>x!==null)) {
+        if((uWin || boardWins.every(x=>x!==null)) && !d.roundProcessed) {
+            if(myRole === 'X' && uWin) {
+                window.dbUpdate(window.dbRef(window.db, `matches/${mId}`), {roundProcessed: true});
+            }
             if(!isUI_Locked) handleRoundEnd(uWin);
-        } else { getEl('victoryModal').style.display = 'none'; isUI_Locked = false; }
+        } else if(!uWin && !boardWins.every(x=>x!==null)) {
+            getEl('victoryModal').style.display = 'none'; isUI_Locked = false;
+        }
         
-        // Emojis
         if(d.emoji && d.emoji.sender !== myRole && d.emoji.time > Date.now()-2000) showEmoji(d.emoji.char);
 
-        // Reset/Forfeit requests
-        if(d.req === 'reset' && d.reqFrom !== myRole) showCustomConfirm('Restart', 'Opponent wants to restart board. Accept?', () => window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}`), {req: 'accept_reset'}) );
-        if(d.req === 'accept_reset') { 
-            window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}`), {
-                boardStates: JSON.stringify(Array(9).fill().map(()=>Array(9).fill(''))), boardWins: JSON.stringify(Array(9).fill(null)),
-                currentPlayer: 'X', activeBoardIndex: -1, req: null, lastMove: null
-            }); 
-        }
-        if(d.req === 'forfeit' && d.reqFrom !== myRole) { showCustomAlert('Victory', 'Opponent forfeited!'); window.dbRemove(window.dbRef(window.db, `matches/${currentMatchId}`)); handleRoundEnd(myRole); }
+        if(d.req === 'forfeit' && d.reqFrom !== myRole) { showCustomAlert('Victory', 'Opponent forfeited!'); leaveMatch(); }
 
         renderGameUI();
     });
-
-    // Opponent disconnect monitor
-    window.dbOnValue(window.dbRef(window.db, `players/${oppId}/status`), snap => {
-        let s = snap.val();
-        if(s === 'offline') { getEl('connDot').className='w-2 h-2 rounded-full bg-rose-500 animate-pulse'; getEl('connText').textContent='Disconnected'; }
-        else { getEl('connDot').className='w-2 h-2 rounded-full bg-emerald-500'; getEl('connText').textContent='Online'; }
-    });
-}
-
-// Timer Logic
-function startTurnTimer() {
-    getEl('turnTimerText').textContent = currentTurnTime;
-    turnTimerInt = setInterval(() => {
-        currentTurnTime--; getEl('turnTimerText').textContent = currentTurnTime;
-        if(currentTurnTime <= 0) {
-            clearInterval(turnTimerInt);
-            if(currentPlayer === myRole) { window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}`), {req: 'forfeit', reqFrom: myRole}); }
-        }
-    }, 1000);
 }
 
 function leaveMatch() {
-    clearInterval(turnTimerInt); getEl('victoryModal').style.display = 'none';
+    getEl('victoryModal').style.display = 'none';
     if(gameMode === 'online' && currentMatchId && window.db) window.dbRemove(window.dbRef(window.db, `matches/${currentMatchId}`));
     if(matchListener) { matchListener(); matchListener = null; }
     currentMatchId = null; window.dbUpdate(window.dbRef(window.db, `players/${playerId}`), {status: 'online'}); navigate('#menu');
@@ -579,9 +549,10 @@ getEl('surrenderBtn').onclick = () => {
     if(gameMode==='offline') { scores[myRole==='X'?'O':'X'] = targetWins; handleRoundEnd(myRole==='X'?'O':'X'); }
     else showCustomConfirm('Forfeit?', 'Give up this match?', () => { window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}`), {req: 'forfeit', reqFrom: myRole}); leaveMatch(); });
 };
+
 getEl('resetMatchBtn').onclick = () => {
     if(gameMode==='offline') startLocalRound(false);
-    else { showCustomAlert('Sent', 'Requested restart.'); window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}`), {req: 'reset', reqFrom: myRole}); }
+    else { window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}/rematch`), { [myRole]: true }); }
 };
 
 getEl('acceptRematchBtn').onclick = () => {
@@ -589,12 +560,10 @@ getEl('acceptRematchBtn').onclick = () => {
     if(gameMode === 'offline') startLocalRound(scores.X>=targetWins || scores.O>=targetWins);
     else {
         getEl('acceptRematchBtn').textContent = 'Waiting...';
-        let isNewCup = scores.X>=targetWins || scores.O>=targetWins;
-        window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}`), { req: 'accept_reset', scores: isNewCup?{X:0,O:0}:scores });
+        window.dbUpdate(window.dbRef(window.db, `matches/${currentMatchId}/rematch`), { [myRole]: true });
     }
 };
 
-// Emojis
 document.querySelectorAll('.emoji-btn').forEach(btn => btn.onclick = (e) => {
     if(emojiCooldown) return; emojiCooldown = true; setTimeout(()=>emojiCooldown=false, 3000);
     let char = e.target.textContent; showEmoji(char); playSound('click');
@@ -606,10 +575,3 @@ function showEmoji(char) {
     el.classList.remove('opacity-0', '-translate-y-1/2'); el.classList.add('opacity-100', '-translate-y-[200px]');
     setTimeout(() => { el.classList.add('opacity-0', '-translate-y-1/2'); el.classList.remove('opacity-100', '-translate-y-[200px]'); }, 1500);
 }
-
-// PWA Install Prompt Concept
-let deferredPrompt;
-window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault(); deferredPrompt = e;
-    // You could show a custom button here "Install App" and call deferredPrompt.prompt()
-});

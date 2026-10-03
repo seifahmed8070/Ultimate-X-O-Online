@@ -1,73 +1,54 @@
+```javascript
 // ==========================================
 // 1. Audio & Lightweight Background
 // ==========================================
-
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
 function playSound(type) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
-
     const osc = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
-
     osc.connect(gainNode);
     gainNode.connect(audioCtx.destination);
-
     if (type === 'click') {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(400, audioCtx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.08);
-
         gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
-
         osc.start();
         osc.stop(audioCtx.currentTime + 0.08);
     }
-
     else if (type === 'win') {
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(300, audioCtx.currentTime);
         osc.frequency.setValueAtTime(700, audioCtx.currentTime + 0.2);
-
         gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-
         osc.start();
         osc.stop(audioCtx.currentTime + 0.4);
     }
-
     else if (type === 'lose') {
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(300, audioCtx.currentTime);
         osc.frequency.linearRampToValueAtTime(150, audioCtx.currentTime + 0.4);
-
         gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-
         osc.start();
         osc.stop(audioCtx.currentTime + 0.4);
     }
 }
-
-
 // ==========================================
 // 2. Background
 // ==========================================
-
 const bgCanvas = document.getElementById('bgCanvas');
 const bgCtx = bgCanvas.getContext('2d');
-
 let bgParticles = [];
-
 function resizeBg() {
     bgCanvas.width = window.innerWidth;
     bgCanvas.height = window.innerHeight;
 }
-
 window.addEventListener('resize', resizeBg);
 resizeBg();
-
 for (let i = 0; i < 18; i++) {
     bgParticles.push({
         x: Math.random() * bgCanvas.width,
@@ -79,7 +60,6 @@ for (let i = 0; i < 18; i++) {
         rSpeed: (Math.random() - 0.5) * 0.01
     });
 }
-
 function animateBg() {
     bgCtx.clearRect(
         0,
@@ -87,147 +67,127 @@ function animateBg() {
         bgCanvas.width,
         bgCanvas.height
     );
-
     const primary =
         getComputedStyle(document.documentElement)
             .getPropertyValue('--primary')
             .trim() || '#06b6d4';
-
     bgParticles.forEach(p => {
         p.y -= p.speedY;
         p.rot += p.rSpeed;
-
         if (p.y < -50) {
             p.y = bgCanvas.height + 50;
             p.x = Math.random() * bgCanvas.width;
         }
-
         bgCtx.save();
-
         bgCtx.translate(p.x, p.y);
         bgCtx.rotate(p.rot);
-
         bgCtx.fillStyle = primary;
         bgCtx.globalAlpha = 0.08;
         bgCtx.font = `900 ${p.size}px sans-serif`;
         bgCtx.textAlign = 'center';
         bgCtx.textBaseline = 'middle';
-
         bgCtx.fillText(
             p.char,
             0,
             0
         );
-
         bgCtx.restore();
     });
-
     requestAnimationFrame(animateBg);
 }
-
 animateBg();
-
-
 // ==========================================
 // 3. Global State
 // ==========================================
-
 let playerId =
     localStorage.getItem('playerId') || null;
-
 let playerName =
     localStorage.getItem('playerName') || '';
-
 let playerPin =
     localStorage.getItem('playerPin') || '';
-
 let sessionId =
     's_' +
     Math.random()
         .toString(36)
         .substr(2, 9);
-
 let gameMode = 'offline';
 let aiLevel = 'medium';
-
 let currentFormat = '1';
 let targetWins = 1;
-
 let currentMatchId = null;
 let myRole = 'X';
-
 let opponentName = 'Opponent';
 let opponentId = null;
-
 let boardWins =
     Array(9).fill(null);
-
 let boardStates =
     Array(9)
         .fill()
         .map(() => Array(9).fill(''));
-
 let activeBoardIndex = -1;
 let currentPlayer = 'X';
-
 let scores = {
     X: 0,
     O: 0
 };
-
 let lastMove = null;
 let isUI_Locked = false;
-
 let userStats = {
     points: 0,
     wins: 0,
     losses: 0,
     history: []
 };
-
 let matchListener = null;
 let challengeListener = null;
 let challengeRequestListener = null;
-
 let lobbyListener = null;
+let leaderboardListener = null;
 let challengeResponseListener = null;
-
 let presenceHeartbeat = null;
 let turnTimerInterval = null;
-
 let emojiCooldown = false;
-
 let lastHandledResultId = null;
 let lastResetRequest = null;
-
 let matchResultShown = false;
 let matchResultData = null;
-
 let lastEmojiTime = 0;
-
 let presenceUpdater = null;
-
 let opponentPresenceListener = null;
 let disconnectGraceInterval = null;
 let opponentOfflineSince = 0;
-
+let presenceVisibilityHandler = null;
+let sessionListener = null;
+let presenceInitialized = false;
+let outgoingChallengeId = null;
+let outgoingChallengeTargetId = null;
+let outgoingChallengeListener = null;
+let outgoingChallengeTimer = null;
+let pendingExit = false;
+let aiMoveTimer = null;
+let activeTurnTimerKey = null;
+let timeoutPublishedForTurn = false;
+let matchStartDeadlineTimer = null;
+let onlineMatchStartedAt = 0;
+let firebaseReadyHandled = false;
 const getEl = id =>
     document.getElementById(id);
-
-
+function updateGameModeBadges(text) {
+    document
+        .querySelectorAll('[id="gameModeBadge"]')
+        .forEach(el => {
+            el.textContent = text;
+        });
+}
 // ==========================================
 // 4. Custom Modals
 // ==========================================
-
 function showCustomAlert(title, text) {
     playSound('click');
-
     getEl('customModalTitle').textContent =
         title;
-
     getEl('customModalText').textContent =
         text;
-
     getEl('customModalButtons').innerHTML = `
         <button
             id="cmOk"
@@ -236,29 +196,23 @@ function showCustomAlert(title, text) {
             OK
         </button>
     `;
-
     getEl('customModal').style.display =
         'flex';
-
     getEl('cmOk').onclick = () => {
         getEl('customModal').style.display =
             'none';
     };
 }
-
 function showCustomConfirm(
     title,
     text,
     onConfirm
 ) {
     playSound('click');
-
     getEl('customModalTitle').textContent =
         title;
-
     getEl('customModalText').textContent =
         text;
-
     getEl('customModalButtons').innerHTML = `
         <button
             id="cmYes"
@@ -266,7 +220,6 @@ function showCustomConfirm(
         >
             Yes
         </button>
-
         <button
             id="cmNo"
             class="w-full bg-rose-600 text-white font-bold py-3 rounded-xl text-sm cursor-pointer"
@@ -274,28 +227,21 @@ function showCustomConfirm(
             No
         </button>
     `;
-
     getEl('customModal').style.display =
         'flex';
-
     getEl('cmYes').onclick = () => {
         getEl('customModal').style.display =
             'none';
-
         onConfirm();
     };
-
     getEl('cmNo').onclick = () => {
         getEl('customModal').style.display =
             'none';
     };
 }
-
-
 // ==========================================
 // 5. Routing
 // ==========================================
-
 function navigate(hash) {
     if (
         !playerId &&
@@ -303,63 +249,49 @@ function navigate(hash) {
     ) {
         window.location.hash =
             '#login';
-
         return;
     }
-
     if (
         playerId &&
         hash === '#login'
     ) {
         window.location.hash =
             '#menu';
-
         return;
     }
-
     document
         .querySelectorAll('.view-section')
         .forEach(el =>
             el.classList.add('hidden')
         );
-
     const target =
         getEl(
             `view-${hash.replace('#', '')}`
         );
-
     if (target) {
         target.classList.remove(
             'hidden'
         );
     }
-
     getEl('mainHeader')
         .classList
         .toggle(
             'hidden',
             hash === '#login'
         );
-
     if (hash === '#menu')
         updateMenuData();
-
     if (hash === '#lobby')
         fetchOnlinePlayers();
-
     if (hash === '#profile')
         loadProfileData();
-
     if (hash === '#history')
         loadHistoryData();
-
     if (hash === '#leaderboard')
         fetchLeaderboard();
-
     window.location.hash =
         hash;
 }
-
 window.addEventListener(
     'hashchange',
     () => {
@@ -371,35 +303,26 @@ window.addEventListener(
         );
     }
 );
-
-
 // ==========================================
 // 6. Theme
 // ==========================================
-
 const themeSelect =
     getEl('themeSelector');
-
 themeSelect.value =
     localStorage.getItem('theme') ||
     'theme-cyberpunk';
-
 getEl('htmlRoot').className =
     themeSelect.value;
-
 themeSelect.addEventListener(
     'change',
     e => {
         playSound('click');
-
         localStorage.setItem(
             'theme',
             e.target.value
         );
-
         getEl('htmlRoot').className =
             e.target.value;
-
         if (
             window.db &&
             playerId
@@ -417,17 +340,13 @@ themeSelect.addEventListener(
         }
     }
 );
-
-
 // ==========================================
 // 7. Authentication
 // ==========================================
-
 getEl('togglePinBtn').onclick =
     e => {
         const input =
             getEl('playerPinInput');
-
         if (
             input.classList.contains(
                 'password-disc'
@@ -436,19 +355,16 @@ getEl('togglePinBtn').onclick =
             input.classList.remove(
                 'password-disc'
             );
-
             e.target.textContent =
                 '🙈';
         } else {
             input.classList.add(
                 'password-disc'
             );
-
             e.target.textContent =
                 '👁️';
         }
     };
-
 getEl('playerPinInput')
     .addEventListener(
         'input',
@@ -460,7 +376,6 @@ getEl('playerPinInput')
                 );
         }
     );
-
 getEl('playerNameInput')
     .addEventListener(
         'input',
@@ -474,30 +389,24 @@ getEl('playerNameInput')
                     );
         }
     );
-
 let isRegister = false;
-
 getEl('authSwitchBtn').onclick =
     () => {
         isRegister =
             !isRegister;
-
         playSound('click');
-
         getEl(
             'authModalTitle'
         ).textContent =
             isRegister
                 ? 'Create Account'
                 : 'Player Login';
-
         getEl(
             'authSubmitBtn'
         ).textContent =
             isRegister
                 ? 'Register'
                 : 'Login';
-
         getEl(
             'authSwitchBtn'
         ).textContent =
@@ -505,11 +414,9 @@ getEl('authSwitchBtn').onclick =
                 ? 'Have an account? Login'
                 : 'Create Account';
     };
-
 getEl('authSubmitBtn').onclick =
     async () => {
         playSound('click');
-
         const name =
             getEl('playerNameInput')
                 .value
@@ -518,11 +425,9 @@ getEl('authSubmitBtn').onclick =
                     ' '
                 )
                 .trim();
-
         const pin =
             getEl('playerPinInput')
                 .value;
-
         if (
             !/^[a-z ]{3,40}$/.test(
                 name
@@ -533,7 +438,6 @@ getEl('authSubmitBtn').onclick =
                 'Name must be 3-40 lowercase letters.'
             );
         }
-
         if (
             !/^\d{4}$/.test(pin)
         ) {
@@ -542,129 +446,124 @@ getEl('authSubmitBtn').onclick =
                 'PIN must be exactly 4 digits.'
             );
         }
-
         if (!window.db) {
             return showCustomAlert(
                 'Wait',
                 'Connecting to server...'
             );
         }
-
-        const snap =
-            await window.dbGet(
-                window.dbRef(
-                    window.db,
-                    'players'
-                )
-            );
-
-        let exists = false;
-        let matchedId = null;
-        let pData = null;
-
-        if (snap.exists()) {
-            snap.forEach(child => {
-                const u =
-                    child.val();
-
-                if (
-                    u.name === name
-                ) {
-                    exists = true;
-                    matchedId =
-                        child.key;
-                    pData = u;
+        try {
+            const snap =
+                await window.dbGet(
+                    window.dbRef(
+                        window.db,
+                        'players'
+                    )
+                );
+            let exists = false;
+            let matchedId = null;
+            let pData = null;
+            if (snap.exists()) {
+                snap.forEach(child => {
+                    const u =
+                        child.val() || {};
+                    if (
+                        u.name === name
+                    ) {
+                        exists = true;
+                        matchedId =
+                            child.key;
+                        pData = u;
+                    }
+                });
+            }
+            if (isRegister) {
+                if (exists) {
+                    return showCustomAlert(
+                        'Taken',
+                        'Name exists. Try logging in.'
+                    );
                 }
-            });
-        }
-
-        if (isRegister) {
-            if (exists) {
-                return showCustomAlert(
-                    'Taken',
-                    'Name exists. Try logging in.'
-                );
+                playerId =
+                    'p_' +
+                    Math.random()
+                        .toString(36)
+                        .slice(2, 11);
+                playerName = name;
+                playerPin = pin;
+                userStats = {
+                    points: 0,
+                    wins: 0,
+                    losses: 0,
+                    history: []
+                };
+            } else {
+                if (
+                    !exists ||
+                    !pData ||
+                    pData.pin !== pin
+                ) {
+                    return showCustomAlert(
+                        'Failed',
+                        'Invalid name or PIN.'
+                    );
+                }
+                playerId =
+                    matchedId;
+                playerName =
+                    pData.name;
+                playerPin =
+                    pData.pin;
+                userStats = {
+                    points:
+                        Number(
+                            pData.points
+                        ) || 0,
+                    wins:
+                        Number(
+                            pData.wins
+                        ) || 0,
+                    losses:
+                        Number(
+                            pData.losses
+                        ) || 0,
+                    history:
+                        Array.isArray(
+                            pData.history
+                        )
+                            ? pData.history
+                            : []
+                };
             }
-
-            playerId =
-                'p_' +
-                Math.random()
-                    .toString(36)
-                    .substr(2, 9);
-
-            playerName = name;
-            playerPin = pin;
-
-            userStats = {
-                points: 0,
-                wins: 0,
-                losses: 0,
-                history: []
-            };
-        } else {
-            if (
-                !exists ||
-                pData.pin !== pin
-            ) {
-                return showCustomAlert(
-                    'Failed',
-                    'Invalid name or PIN.'
-                );
-            }
-
-            playerId =
-                matchedId;
-
-            playerName =
-                pData.name;
-
-            playerPin =
-                pData.pin;
-
-            userStats = {
-                points:
-                    pData.points || 0,
-
-                wins:
-                    pData.wins || 0,
-
-                losses:
-                    pData.losses || 0,
-
-                history:
-                    pData.history || []
-            };
+            localStorage.setItem(
+                'playerId',
+                playerId
+            );
+            localStorage.setItem(
+                'playerName',
+                playerName
+            );
+            localStorage.setItem(
+                'playerPin',
+                playerPin
+            );
+            setupPresence();
+            await processPendingResults();
+            navigate('#menu');
+        } catch (e) {
+            console.error(
+                'Authentication failed',
+                e
+            );
+            showCustomAlert(
+                'Connection Error',
+                'Could not reach the game server. Please try again.'
+            );
         }
-
-        localStorage.setItem(
-            'playerId',
-            playerId
-        );
-
-        localStorage.setItem(
-            'playerName',
-            playerName
-        );
-
-        localStorage.setItem(
-            'playerPin',
-            playerPin
-        );
-
-        setupPresence();
-
-        await processPendingResults(
-            true
-        );
-
-        navigate('#menu');
     };
-
-
 // ==========================================
 // 8. Presence
 // ==========================================
-
 function setupPresence() {
     if (
         !window.db ||
@@ -672,25 +571,21 @@ function setupPresence() {
     ) {
         return;
     }
-
     const r =
         window.dbRef(
             window.db,
             `players/${playerId}`
         );
-
     window.dbOnDisconnect(r)
         .update({
             status: 'offline',
             lastActive: Date.now()
         });
-
     if (presenceHeartbeat) {
         clearInterval(
             presenceHeartbeat
         );
     }
-
     presenceUpdater =
         stat =>
             window.dbUpdate(
@@ -698,126 +593,104 @@ function setupPresence() {
                 {
                     name:
                         playerName,
-
                     pin:
                         playerPin,
-
                     points:
                         userStats.points,
-
                     wins:
                         userStats.wins,
-
                     losses:
                         userStats.losses,
-
                     status:
                         stat,
-
                     sessionId,
-
                     lastActive:
                         Date.now()
                 }
+            ).catch(
+                e =>
+                    console.error(
+                        'Presence update failed',
+                        e
+                    )
             );
-
     presenceUpdater(
         currentMatchId
             ? 'in-game'
             : 'online'
     );
-
     presenceHeartbeat =
         setInterval(
             () => {
-                if (
-                    document.visibilityState ===
-                    'visible'
-                ) {
-                    presenceUpdater(
-                        currentMatchId
-                            ? 'in-game'
-                            : 'online'
-                    );
-                }
-            },
-            5000
-        );
-
-    document.addEventListener(
-        'visibilitychange',
-        () => {
-            if (
-                document.visibilityState ===
-                'visible'
-            ) {
                 presenceUpdater(
                     currentMatchId
                         ? 'in-game'
                         : 'online'
                 );
-            } else {
-                presenceUpdater(
-                    'offline'
-                );
-            }
-        }
-    );
-
-    window.dbOnValue(
-        window.dbRef(
-            window.db,
-            `players/${playerId}/sessionId`
-        ),
-        snap => {
-            if (
-                snap.exists() &&
-                snap.val() !==
-                    sessionId
-            ) {
-                localStorage.clear();
-
-                alert(
-                    'Logged in from another device!'
-                );
-
-                window.location.reload();
-            }
-        }
-    );
-
-    if (!challengeListener) {
-        challengeListener =
-            window.dbOnValue(
-                window.dbRef(
-                    window.db,
-                    `challenges/${playerId}`
-                ),
-                snap => {
-                    const data =
-                        snap.val();
-
-                    if (
-                        data?.status ===
-                        'pending'
-                    ) {
-                        showIncomingChallenge(
-                            data
-                        );
-                    }
+            },
+            5000
+        );
+    if (sessionListener) {
+        sessionListener();
+        sessionListener = null;
+    }
+    sessionListener =
+        window.dbOnValue(
+            window.dbRef(
+                window.db,
+                `players/${playerId}/sessionId`
+            ),
+            snap => {
+                if (
+                    snap.exists() &&
+                    snap.val() !== sessionId
+                ) {
+                    localStorage.clear();
+                    alert(
+                        'Logged in from another device!'
+                    );
+                    window.location.reload();
                 }
-            );
+            }
+        );
+    if (!presenceInitialized) {
+        presenceInitialized = true;
+        if (!challengeListener) {
+            challengeListener =
+                window.dbOnValue(
+                    window.dbRef(
+                        window.db,
+                        `challenges/${playerId}`
+                    ),
+                    snap => {
+                        const data =
+                            snap.val();
+                        if (
+                            data?.status ===
+                            'pending'
+                        ) {
+                            showIncomingChallenge(
+                                data
+                            );
+                        }
+                    }
+                );
+        }
     }
 }
-
-
 // ==========================================
 // 9. Firebase Ready
 // ==========================================
-
-window.addEventListener(
-    'firebase-ready',
-    async () => {
+async function handleFirebaseReady() {
+    if (
+        firebaseReadyHandled ||
+        !window.db
+    ) {
+        return;
+    }
+    firebaseReadyHandled =
+        true;
+    try {
         if (playerId) {
             const snap =
                 await window.dbGet(
@@ -826,7 +699,6 @@ window.addEventListener(
                         `players/${playerId}`
                     )
                 );
-
             if (
                 snap.exists() &&
                 snap.val().pin ===
@@ -834,47 +706,62 @@ window.addEventListener(
             ) {
                 const d =
                     snap.val();
-
                 userStats = {
                     points:
-                        d.points || 0,
-
+                        Number(
+                            d.points
+                        ) || 0,
                     wins:
-                        d.wins || 0,
-
+                        Number(
+                            d.wins
+                        ) || 0,
                     losses:
-                        d.losses || 0,
-
+                        Number(
+                            d.losses
+                        ) || 0,
                     history:
-                        d.history || []
+                        Array.isArray(
+                            d.history
+                        )
+                            ? d.history
+                            : []
                 };
-
                 setupPresence();
-
-                await processPendingResults(
-                    true
-                );
-
+                await processPendingResults();
                 navigate(
                     window.location.hash ||
                     '#menu'
                 );
             } else {
                 localStorage.clear();
-
                 navigate('#login');
             }
         } else {
             navigate('#login');
         }
+    } catch (e) {
+        console.error(
+            'Firebase startup failed',
+            e
+        );
+        firebaseReadyHandled =
+            false;
+        showCustomAlert(
+            'Connection Error',
+            'Could not connect to the game server. Please refresh and try again.'
+        );
     }
+}
+window.addEventListener(
+    'firebase-ready',
+    handleFirebaseReady
 );
-
-
+if (window.db) {
+    handleFirebaseReady();
+}
 // ==========================================
 // 10. Logout
 // ==========================================
-
 getEl('logoutBtn').onclick =
     () =>
         showCustomConfirm(
@@ -896,41 +783,30 @@ getEl('logoutBtn').onclick =
                         }
                     );
                 }
-
                 localStorage.clear();
-
                 window.location.reload();
             }
         );
-
-
 // ==========================================
 // 11. Menu / Profile / History
 // ==========================================
-
 function updateMenuData() {
     getEl('menuUsername')
         .textContent =
         playerName;
 }
-
 function getRank(pts) {
     if (pts < 20)
         return 'Rookie 🥉';
-
     if (pts < 50)
         return 'Fighter 🥈';
-
     if (pts < 100)
         return 'Master 🥇';
-
     return 'Grandmaster 🏆';
 }
-
 async function getPlayerRank(id) {
     if (!window.db)
         return null;
-
     try {
         const snap =
             await window.dbGet(
@@ -939,16 +815,12 @@ async function getPlayerRank(id) {
                     'players'
                 )
             );
-
         if (!snap.exists())
             return null;
-
         const players = [];
-
         snap.forEach(c => {
             const d =
                 c.val() || {};
-
             if (d.name) {
                 players.push({
                     id: c.key,
@@ -960,7 +832,6 @@ async function getPlayerRank(id) {
                 });
             }
         });
-
         players.sort(
             (a, b) =>
                 (b.points -
@@ -969,26 +840,20 @@ async function getPlayerRank(id) {
                     b.name
                 )
         );
-
         const i =
             players.findIndex(
                 x => x.id === id
             );
-
         return i < 0
             ? null
             : i + 1;
-
     } catch (e) {
         return null;
     }
 }
-
-
 // ==========================================
 // 12. Result Settlement
 // ==========================================
-
 async function commitPlayerResult(
     result
 ) {
@@ -1001,19 +866,15 @@ async function commitPlayerResult(
     ) {
         return null;
     }
-
     const mine =
         result.players[playerId];
-
     const matchKey =
         result.matchId;
-
     const playerRef =
         window.dbRef(
             window.db,
             `players/${playerId}`
         );
-
     try {
         const tx =
             await window.dbTransaction(
@@ -1021,37 +882,30 @@ async function commitPlayerResult(
                 current => {
                     if (!current)
                         return current;
-
                     current = {
                         ...current
                     };
-
                     current.points =
                         Number(
                             current.points
                         ) || 0;
-
                     current.wins =
                         Number(
                             current.wins
                         ) || 0;
-
                     current.losses =
                         Number(
                             current.losses
                         ) || 0;
-
                     current.history =
                         Array.isArray(
                             current.history
                         )
                             ? current.history
                             : [];
-
                     current.processedMatches =
                         current.processedMatches ||
                         {};
-
                     if (
                         current
                             .processedMatches[
@@ -1060,45 +914,36 @@ async function commitPlayerResult(
                     ) {
                         return current;
                     }
-
                     current.points +=
                         Number(
                             mine.delta
                         ) || 0;
-
                     if (
                         mine.outcome ===
                         'Win'
                     ) {
                         current.wins++;
                     }
-
                     if (
                         mine.outcome ===
                         'Loss'
                     ) {
                         current.losses++;
                     }
-
                     current.history.push({
                         res:
                             mine.outcome,
-
                         opp:
                             mine.opponentName ||
                             'Opponent',
-
                         pointsDelta:
                             mine.delta,
-
                         matchId:
                             matchKey,
-
                         at:
                             result.at ||
                             Date.now()
                     });
-
                     if (
                         current.history
                             .length > 50
@@ -1108,38 +953,30 @@ async function commitPlayerResult(
                                 -50
                             );
                     }
-
                     current.processedMatches[
                         matchKey
                     ] = true;
-
                     return current;
                 }
             );
-
         if (!tx.committed)
             return null;
-
         const updated =
             tx.snapshot.val() ||
             {};
-
         userStats = {
             points:
                 Number(
                     updated.points
                 ) || 0,
-
             wins:
                 Number(
                     updated.wins
                 ) || 0,
-
             losses:
                 Number(
                     updated.losses
                 ) || 0,
-
             history:
                 Array.isArray(
                     updated.history
@@ -1147,19 +984,15 @@ async function commitPlayerResult(
                     ? updated.history
                     : []
         };
-
         return updated;
-
     } catch (e) {
         console.error(
             'Result settlement failed',
             e
         );
-
         return null;
     }
 }
-
 async function buildResultMessage(
     result,
     stats,
@@ -1169,19 +1002,16 @@ async function buildResultMessage(
         await getPlayerRank(
             playerId
         );
-
     const label =
         mine.outcome === 'Win'
             ? 'كسبت'
             : mine.outcome === 'Loss'
                 ? 'خسرت'
                 : 'تعادل';
-
     const deltaText =
         mine.delta > 0
             ? `+${mine.delta}`
             : `${mine.delta}`;
-
     return (
         `${label} ${Math.abs(mine.delta)} نقطة ` +
         `(${deltaText}) — ` +
@@ -1195,7 +1025,6 @@ async function buildResultMessage(
         }.`
     );
 }
-
 async function publishMatchResult(
     matchId,
     winnerRole = 'DRAW',
@@ -1203,17 +1032,18 @@ async function publishMatchResult(
 ) {
     if (
         !window.db ||
-        !matchId
+        !matchId ||
+        !['X', 'O', 'DRAW'].includes(
+            winnerRole
+        )
     ) {
         return null;
     }
-
     const matchRef =
         window.dbRef(
             window.db,
             `matches/${matchId}`
         );
-
     try {
         const tx =
             await window.dbTransaction(
@@ -1221,53 +1051,62 @@ async function publishMatchResult(
                 d => {
                     if (!d)
                         return d;
-
                     if (d.result)
                         return d;
-
                     const players =
                         d.players || {};
-
                     const xId =
                         players.X?.id;
-
                     const oId =
                         players.O?.id;
-
                     if (!xId || !oId)
                         return d;
-
+                    d.scores = {
+                        X:
+                            Number(
+                                d.scores?.X
+                            ) || 0,
+                        O:
+                            Number(
+                                d.scores?.O
+                            ) || 0
+                    };
+                    if (
+                        winnerRole !== 'DRAW'
+                    ) {
+                        d.scores[
+                            winnerRole
+                        ]++;
+                    }
                     const xName =
                         players.X?.name ||
                         'Player X';
-
                     const oName =
                         players.O?.name ||
                         'Player O';
-
                     const draw =
                         winnerRole ===
                         'DRAW';
-
                     const xWin =
                         winnerRole === 'X';
-
+                    d.roundProcessed =
+                        true;
+                    d.roundWinner =
+                        winnerRole;
+                    d.lastActive =
+                        Date.now();
                     d.result = {
                         matchId,
-
                         type:
                             draw
                                 ? 'draw'
                                 : reason,
-
                         winnerRole:
                             draw
                                 ? null
                                 : winnerRole,
-
                         at:
                             Date.now(),
-
                         players: {
                             [xId]: {
                                 outcome:
@@ -1276,18 +1115,15 @@ async function publishMatchResult(
                                         : xWin
                                             ? 'Win'
                                             : 'Loss',
-
                                 delta:
                                     draw
                                         ? 1
                                         : xWin
                                             ? 3
                                             : -1,
-
                                 opponentName:
                                     oName
                             },
-
                             [oId]: {
                                 outcome:
                                     draw
@@ -1295,34 +1131,28 @@ async function publishMatchResult(
                                         : xWin
                                             ? 'Loss'
                                             : 'Win',
-
                                 delta:
                                     draw
                                         ? 1
                                         : xWin
                                             ? -1
                                             : 3,
-
                                 opponentName:
                                     xName
                             }
                         }
                     };
-
                     return d;
                 }
             );
-
         if (!tx.committed)
             return null;
-
+        const snapshot =
+            tx.snapshot.val() || {};
         const result =
-            tx.snapshot.val()
-                ?.result || null;
-
+            snapshot.result || null;
         if (result?.players) {
             const updates = {};
-
             Object.keys(
                 result.players
             ).forEach(id => {
@@ -1330,7 +1160,6 @@ async function publishMatchResult(
                     `pendingResults/${id}/${matchId}`
                 ] = result;
             });
-
             await window.dbUpdate(
                 window.dbRef(
                     window.db
@@ -1338,19 +1167,15 @@ async function publishMatchResult(
                 updates
             );
         }
-
         return result;
-
     } catch (e) {
         console.error(
             'Could not publish match result',
             e
         );
-
         return null;
     }
 }
-
 async function handleOnlineResult(
     result,
     showMessage = true
@@ -1359,30 +1184,24 @@ async function handleOnlineResult(
         !result ||
         !result.players?.[playerId]
     ) {
-        return;
+        return false;
     }
-
     if (
         lastHandledResultId ===
         result.matchId
     ) {
-        return;
+        return true;
     }
-
     const mine =
         result.players[playerId];
-
     const stats =
         await commitPlayerResult(
             result
         );
-
     if (!stats)
-        return;
-
+        return false;
     lastHandledResultId =
         result.matchId;
-
     if (showMessage) {
         const msg =
             await buildResultMessage(
@@ -1390,7 +1209,6 @@ async function handleOnlineResult(
                 stats,
                 mine
             );
-
         showCustomAlert(
             mine.outcome === 'Win'
                 ? 'You Won'
@@ -1400,7 +1218,6 @@ async function handleOnlineResult(
             msg
         );
     }
-
     if (window.db) {
         await window.dbRemove(
             window.dbRef(
@@ -1409,10 +1226,9 @@ async function handleOnlineResult(
             )
         );
     }
-
     loadProfileData();
+    return true;
 }
-
 async function processPendingResults() {
     if (
         !window.db ||
@@ -1420,93 +1236,87 @@ async function processPendingResults() {
     ) {
         return;
     }
-
     const r =
         window.dbRef(
             window.db,
             `pendingResults/${playerId}`
         );
-
-    const snap =
-        await window.dbGet(r);
-
-    if (!snap.exists())
-        return;
-
-    const jobs = [];
-
-    snap.forEach(c => {
-        jobs.push({
-            key: c.key,
-            value: c.val()
+    try {
+        const snap =
+            await window.dbGet(r);
+        if (!snap.exists()) {
+            return;
+        }
+        const jobs = [];
+        snap.forEach(c => {
+            jobs.push({
+                key:
+                    c.key,
+                value:
+                    c.val()
+            });
         });
-    });
-
-    for (const job of jobs) {
-        await handleOnlineResult(
-            job.value,
-            false
-        );
-
-        await window.dbRemove(
-            window.dbRef(
-                window.db,
-                `pendingResults/${playerId}/${job.key}`
-            )
+        for (const job of jobs) {
+            const done =
+                await handleOnlineResult(
+                    job.value,
+                    false
+                );
+            if (done) {
+                await window.dbRemove(
+                    window.dbRef(
+                        window.db,
+                        `pendingResults/${playerId}/${job.key}`
+                    )
+                );
+            }
+        }
+    } catch (e) {
+        console.error(
+            'Pending result processing failed',
+            e
         );
     }
 }
-
-
 // ==========================================
 // 13. Profile / History
 // ==========================================
-
 function loadProfileData() {
     getEl(
         'profileNameDisplay'
     ).textContent =
         playerName;
-
     getEl(
         'profileRankTitle'
     ).textContent =
         getRank(
             userStats.points
         );
-
     getEl(
         'statPoints'
     ).textContent =
         userStats.points;
-
     getEl(
         'statWins'
     ).textContent =
         userStats.wins;
-
     getEl(
         'statLosses'
     ).textContent =
         userStats.losses;
 }
-
 function loadHistoryData() {
     const hl =
         getEl('matchHistoryList');
-
     hl.innerHTML = '';
-
     if (
         !userStats.history ||
         userStats.history.length === 0
     ) {
         hl.innerHTML =
             '<p class="text-slate-500 text-center py-6 text-xs">No matches recorded yet.</p>';
-
         return;
     }
-
     [
         ...userStats.history
     ]
@@ -1523,7 +1333,6 @@ function loadHistoryData() {
                     } font-bold">
                         ${m.res}
                     </span>
-
                     <span class="text-slate-300">
                         vs ${m.opp}
                     </span>
@@ -1531,29 +1340,23 @@ function loadHistoryData() {
             `;
         });
 }
-
-
 // ==========================================
 // 14. PIN / Account
 // ==========================================
-
 getEl('updatePinBtn').onclick =
-    () => {
+    async () => {
         if (currentMatchId) {
             return showCustomAlert(
                 'Blocked',
                 'Cannot change PIN while in a game.'
             );
         }
-
         const oldPin =
             getEl('updateOldPin')
                 .value;
-
         const newPin =
             getEl('updateNewPin')
                 .value;
-
         if (
             oldPin !== playerPin
         ) {
@@ -1562,7 +1365,6 @@ getEl('updatePinBtn').onclick =
                 'Old PIN incorrect.'
             );
         }
-
         if (
             !/^\d{4}$/.test(
                 newPin
@@ -1573,170 +1375,194 @@ getEl('updatePinBtn').onclick =
                 'New PIN must be 4 digits.'
             );
         }
-
-        playerPin =
-            newPin;
-
-        localStorage.setItem(
-            'playerPin',
-            newPin
-        );
-
-        window.dbUpdate(
-            window.dbRef(
-                window.db,
-                `players/${playerId}`
-            ),
-            {
-                pin: newPin
-            }
-        );
-
-        showCustomAlert(
-            'Success',
-            'PIN updated safely.'
-        );
-
-        getEl(
-            'updateOldPin'
-        ).value = '';
-
-        getEl(
-            'updateNewPin'
-        ).value = '';
-    };
-
-getEl('deleteAccountBtn').onclick =
-    () => {
-        if (currentMatchId) {
-            return showCustomAlert(
-                'Blocked',
-                'Cannot delete account during a match.'
-            );
-        }
-
-        const pinInput =
-            getEl(
-                'deleteAccountPin'
-            ).value;
-
-        if (
-            pinInput !==
-            playerPin
-        ) {
+        if (!window.db || !playerId) {
             return showCustomAlert(
                 'Error',
-                'Incorrect PIN. Deletion cancelled.'
+                'Database connection is not ready.'
             );
         }
-
-        showCustomConfirm(
-            'Delete Account',
-            'Are you sure you want to delete your account permanently?',
-            async () => {
-                if (
-                    window.db &&
-                    playerId
-                ) {
-                    await window.dbRemove(
-                        window.dbRef(
-                            window.db,
-                            `players/${playerId}`
-                        )
-                    );
-
-                    await window.dbRemove(
-                        window.dbRef(
-                            window.db,
-                            `challenges/${playerId}`
-                        )
-                    );
+        try {
+            await window.dbUpdate(
+                window.dbRef(
+                    window.db,
+                    `players/${playerId}`
+                ),
+                {
+                    pin: newPin
                 }
-
-                localStorage.clear();
-                window.location.reload();
-            }
-        );
+            );
+            playerPin =
+                newPin;
+            localStorage.setItem(
+                'playerPin',
+                newPin
+            );
+            showCustomAlert(
+                'Success',
+                'PIN updated safely.'
+            );
+            getEl(
+                'updateOldPin'
+            ).value = '';
+            getEl(
+                'updateNewPin'
+            ).value = '';
+        } catch (e) {
+            console.error(
+                'PIN update failed',
+                e
+            );
+            showCustomAlert(
+                'Error',
+                'PIN could not be updated. Please try again.'
+            );
+        }
     };
-
-
+const deleteAccountBtn =
+    getEl('deleteAccountBtn');
+if (deleteAccountBtn) {
+    deleteAccountBtn.onclick =
+        async () => {
+            if (currentMatchId) {
+                return showCustomAlert(
+                    'Blocked',
+                    'Cannot delete account during a match.'
+                );
+            }
+            const pinInput =
+                getEl(
+                    'deleteAccountPin'
+                )?.value || '';
+            if (
+                pinInput !==
+                playerPin
+            ) {
+                return showCustomAlert(
+                    'Error',
+                    'Incorrect PIN. Deletion cancelled.'
+                );
+            }
+            showCustomConfirm(
+                'Delete Account',
+                'Are you sure you want to delete your account permanently?',
+                async () => {
+                    if (
+                        window.db &&
+                        playerId
+                    ) {
+                        try {
+                            const root =
+                                window.dbRef(
+                                    window.db
+                                );
+                            await window.dbUpdate(
+                                root,
+                                {
+                                    [`players/${playerId}`]: null,
+                                    [`challenges/${playerId}`]: null,
+                                    [`pendingResults/${playerId}`]: null
+                                }
+                            );
+                        } catch (e) {
+                            console.error(
+                                'Account deletion failed',
+                                e
+                            );
+                            return showCustomAlert(
+                                'Error',
+                                'Account could not be deleted. Please try again.'
+                            );
+                        }
+                    }
+                    localStorage.clear();
+                    window.location.reload();
+                }
+            );
+        };
+}
 // ==========================================
 // 15. Leaderboard
 // ==========================================
-
 function fetchLeaderboard() {
     if (!window.db)
         return;
-
-    window.dbOnValue(
-        window.dbRef(
-            window.db,
-            'players'
-        ),
-        snap => {
-            const p =
-                snap.val();
-
-            if (!p)
-                return;
-
-            const arr =
-                Object.values(p)
-                    .filter(x => x.name)
-                    .sort(
-                        (a, b) =>
-                            (b.points || 0) -
-                            (a.points || 0)
-                    )
-                    .slice(
-                        0,
-                        10
+    if (leaderboardListener) {
+        leaderboardListener();
+        leaderboardListener = null;
+    }
+    leaderboardListener =
+        window.dbOnValue(
+            window.dbRef(
+                window.db,
+                'players'
+            ),
+            snap => {
+                const p =
+                    snap.val();
+                const list =
+                    getEl(
+                        'leaderboardList'
                     );
-
-            const list =
-                getEl(
-                    'leaderboardList'
-                );
-
-            list.innerHTML = '';
-
-            arr.forEach(
-                (x, i) => {
-                    list.innerHTML += `
-                        <div class="flex justify-between p-3 border-b border-white/10 last:border-0 items-center bg-black/20 rounded-lg mb-1 text-xs">
-                            <span class="font-bold">
-                                <span class="text-slate-400 mr-2">
-                                    #${i + 1}
-                                </span>
-
-                                ${x.name}
-                            </span>
-
-                            <span class="text-amber-400 font-black">
-                                ${x.points || 0}
-                            </span>
-                        </div>
-                    `;
+                if (!list)
+                    return;
+                list.innerHTML = '';
+                if (!p) {
+                    list.innerHTML =
+                        '<p class="text-slate-500 text-center py-6 text-xs">No players yet.</p>';
+                    return;
                 }
-            );
-        },
-        {
-            onlyOnce: true
-        }
-    );
+                const arr =
+                    Object.values(p)
+                        .filter(x => x?.name)
+                        .sort(
+                            (a, b) =>
+                                (
+                                    Number(
+                                        b.points
+                                    ) || 0
+                                ) -
+                                (
+                                    Number(
+                                        a.points
+                                    ) || 0
+                                )
+                        )
+                        .slice(
+                            0,
+                            10
+                        );
+                arr.forEach(
+                    (x, i) => {
+                        list.innerHTML += `
+                            <div class="flex justify-between p-3 border-b border-white/10 last:border-0 items-center bg-black/20 rounded-lg mb-1 text-xs">
+                                <span class="font-bold">
+                                    <span class="text-slate-400 mr-2">
+                                        #${i + 1}
+                                    </span>
+                                    ${x.name}
+                                </span>
+                                <span class="text-amber-400 font-black">
+                                    ${
+                                        Number(
+                                            x.points
+                                        ) || 0
+                                    }
+                                </span>
+                            </div>
+                        `;
+                    }
+                );
+            }
+        );
 }
-
-
 // ==========================================
 // 16. Online Lobby
 // ==========================================
-
 getEl('refreshLobbyBtn').onclick =
     () => {
         playSound('click');
         fetchOnlinePlayers();
     };
-
 function fetchOnlinePlayers() {
     if (
         !window.db ||
@@ -1744,12 +1570,10 @@ function fetchOnlinePlayers() {
     ) {
         return;
     }
-
     if (lobbyListener) {
         lobbyListener();
         lobbyListener = null;
     }
-
     lobbyListener =
         window.dbOnValue(
             window.dbRef(
@@ -1761,17 +1585,12 @@ function fetchOnlinePlayers() {
                     getEl(
                         'onlinePlayersList'
                     );
-
                 if (!list)
                     return;
-
                 list.innerHTML = '';
-
                 const now =
                     Date.now();
-
                 let found = false;
-
                 snap.forEach(c => {
                     if (
                         c.key ===
@@ -1779,10 +1598,8 @@ function fetchOnlinePlayers() {
                     ) {
                         return;
                     }
-
                     const u =
                         c.val() || {};
-
                     const fresh =
                         now -
                         (
@@ -1791,7 +1608,6 @@ function fetchOnlinePlayers() {
                             ) || 0
                         ) <
                         15000;
-
                     if (
                         u.status ===
                             'offline' ||
@@ -1799,13 +1615,10 @@ function fetchOnlinePlayers() {
                     ) {
                         return;
                     }
-
                     found = true;
-
                     const ingame =
                         u.status ===
                         'in-game';
-
                     const safeName =
                         String(
                             u.name ||
@@ -1815,10 +1628,8 @@ function fetchOnlinePlayers() {
                                 /"/g,
                                 '&quot;'
                             );
-
                     list.innerHTML += `
                         <div class="flex justify-between items-center p-3 bg-black/40 rounded-xl border border-white/10 text-xs">
-
                             <span class="font-bold capitalize truncate max-w-[120px]">
                                 <span class="${
                                     ingame
@@ -1827,10 +1638,8 @@ function fetchOnlinePlayers() {
                                 }">
                                     ●
                                 </span>
-
                                 ${u.name || 'Player'}
                             </span>
-
                             ${
                                 ingame
                                     ? `
@@ -1848,16 +1657,13 @@ function fetchOnlinePlayers() {
                                         </button>
                                     `
                             }
-
                         </div>
                     `;
                 });
-
                 if (!found) {
                     list.innerHTML =
                         '<p class="text-slate-500 text-center py-4 text-xs">No one is online.</p>';
                 }
-
                 list
                     .querySelectorAll(
                         '.challenge-btn'
@@ -1875,176 +1681,238 @@ function fetchOnlinePlayers() {
             }
         );
 }
-
-
 // ==========================================
 // 17. Challenges
 // ==========================================
-
 async function sendChallenge(
     targetId,
     targetName
 ) {
     if (
         !window.db ||
+        !playerId ||
         !targetId ||
         targetId === playerId ||
         currentMatchId
     ) {
         return;
     }
-
-    if (
-        challengeResponseListener
-    ) {
-        challengeResponseListener();
-        challengeResponseListener =
-            null;
+    if (outgoingChallengeListener) {
+        outgoingChallengeListener();
+        outgoingChallengeListener = null;
     }
-
+    if (outgoingChallengeTimer) {
+        clearTimeout(outgoingChallengeTimer);
+        outgoingChallengeTimer = null;
+    }
     const format =
         getEl(
             'matchFormatSelect'
         ).value;
-
     const challengeId =
         `c_${Date.now()}_${Math.random()
             .toString(36)
-            .slice(2, 7)}`;
-
+            .slice(2, 9)}`;
     const challengeRef =
         window.dbRef(
             window.db,
             `challenges/${targetId}`
         );
-
-    await window.dbSet(
-        challengeRef,
-        {
-            id: challengeId,
-            fromId: playerId,
-            fromName: playerName,
-            matchId: challengeId,
-            status: 'pending',
-            format,
-            time: Date.now()
-        }
-    );
-
-    showCustomAlert(
-        'Sent!',
-        `Waiting for ${targetName} to accept...`
-    );
-
-    let settled = false;
-
-    challengeResponseListener =
-        window.dbOnValue(
-            challengeRef,
-            snap => {
-                const d =
-                    snap.val();
-
-                if (
-                    settled ||
-                    d?.id !==
-                        challengeId
-                ) {
-                    return;
-                }
-
-                if (
-                    d.status ===
-                    'accepted'
-                ) {
-                    settled = true;
-
-                    challengeResponseListener();
-                    challengeResponseListener =
-                        null;
-
-                    startOnlineMatch(
-                        challengeId,
-                        'X',
-                        targetName,
-                        targetId,
-                        format
-                    );
-                }
-
-                else if (
-                    d.status ===
-                        'declined' ||
-                    d.status ===
-                        'expired'
-                ) {
-                    settled = true;
-
-                    challengeResponseListener();
-                    challengeResponseListener =
-                        null;
-
-                    showCustomAlert(
-                        'Challenge',
-                        `${targetName} declined the challenge.`
-                    );
-                }
-            }
-        );
-
-    setTimeout(
-        async () => {
-            if (
-                settled ||
-                currentMatchId
-            ) {
-                return;
-            }
-
-            const snap =
-                await window.dbGet(
-                    challengeRef
-                );
-
-            const d =
-                snap.val();
-
-            if (
-                d?.id ===
-                    challengeId &&
-                d.status ===
-                    'pending'
-            ) {
-                settled = true;
-
-                await window.dbUpdate(
-                    challengeRef,
-                    {
-                        status:
-                            'expired'
+    const challengeData = {
+        id: challengeId,
+        fromId: playerId,
+        fromName: playerName,
+        matchId: challengeId,
+        status: 'pending',
+        format,
+        time: Date.now()
+    };
+    try {
+        const tx =
+            await window.dbTransaction(
+                challengeRef,
+                current => {
+                    if (
+                        current?.status ===
+                            'pending' &&
+                        Date.now() -
+                            (
+                                Number(
+                                    current.time
+                                ) || 0
+                            ) <
+                            30000
+                    ) {
+                        return;
                     }
-                );
-
-                if (
-                    challengeResponseListener
-                ) {
-                    challengeResponseListener();
-                    challengeResponseListener =
-                        null;
+                    return challengeData;
                 }
-
-                showCustomAlert(
-                    'Challenge',
-                    'Challenge expired.'
-                );
+            );
+        if (!tx.committed) {
+            return showCustomAlert(
+                'Challenge',
+                `${targetName} already has a pending challenge.`
+            );
+        }
+        outgoingChallengeId =
+            challengeId;
+        outgoingChallengeTargetId =
+            targetId;
+        showCustomAlert(
+            'Sent!',
+            `Waiting for ${targetName} to accept...`
+        );
+        let settled = false;
+        const cleanupOutgoing = () => {
+            if (outgoingChallengeListener) {
+                outgoingChallengeListener();
+                outgoingChallengeListener = null;
             }
-        },
-        30000
-    );
+            if (outgoingChallengeTimer) {
+                clearTimeout(
+                    outgoingChallengeTimer
+                );
+                outgoingChallengeTimer = null;
+            }
+            outgoingChallengeId = null;
+            outgoingChallengeTargetId = null;
+        };
+        outgoingChallengeListener =
+            window.dbOnValue(
+                challengeRef,
+                async snap => {
+                    const d =
+                        snap.val();
+                    if (
+                        settled ||
+                        d?.id !== challengeId
+                    ) {
+                        return;
+                    }
+                    if (
+                        d.status ===
+                        'accepted'
+                    ) {
+                        settled = true;
+                        cleanupOutgoing();
+                        showCustomAlert(
+                            'Accepted!',
+                            `${targetName} accepted the challenge.`
+                        );
+                        startOnlineMatch(
+                            d.matchId || challengeId,
+                            'X',
+                            targetName,
+                            targetId,
+                            d.format || format
+                        );
+                        return;
+                    }
+                    if (
+                        d.status ===
+                        'declined'
+                    ) {
+                        settled = true;
+                        cleanupOutgoing();
+                        showCustomAlert(
+                            'Declined',
+                            `${targetName} declined the challenge.`
+                        );
+                        return;
+                    }
+                    if (
+                        d.status ===
+                        'expired'
+                    ) {
+                        settled = true;
+                        cleanupOutgoing();
+                        showCustomAlert(
+                            'Challenge',
+                            'Challenge expired.'
+                        );
+                        return;
+                    }
+                    if (
+                        d.status ===
+                        'cancelled'
+                    ) {
+                        settled = true;
+                        cleanupOutgoing();
+                        showCustomAlert(
+                            'Challenge',
+                            'Challenge cancelled.'
+                        );
+                    }
+                }
+            );
+        outgoingChallengeTimer =
+            setTimeout(
+                async () => {
+                    if (
+                        settled ||
+                        currentMatchId
+                    ) {
+                        return;
+                    }
+                    try {
+                        const snap =
+                            await window.dbGet(
+                                challengeRef
+                            );
+                        const d =
+                            snap.val();
+                        if (
+                            d?.id !==
+                                challengeId ||
+                            d.status !==
+                                'pending'
+                        ) {
+                            return;
+                        }
+                        settled = true;
+                        await window.dbTransaction(
+                            challengeRef,
+                            current => {
+                                if (
+                                    !current ||
+                                    current.id !==
+                                        challengeId ||
+                                    current.status !==
+                                        'pending'
+                                ) {
+                                    return current;
+                                }
+                                current.status =
+                                    'expired';
+                                return current;
+                            }
+                        );
+                        cleanupOutgoing();
+                        showCustomAlert(
+                            'Challenge',
+                            'Challenge expired.'
+                        );
+                    } catch (e) {
+                        console.error(
+                            'Challenge timeout handling failed',
+                            e
+                        );
+                    }
+                },
+                30000
+            );
+    } catch (e) {
+        console.error(
+            'Could not send challenge',
+            e
+        );
+        showCustomAlert(
+            'Challenge',
+            'Could not send the challenge. Please try again.'
+        );
+    }
 }
-
 let activeIncoming = null;
-
 function showIncomingChallenge(
     data
 ) {
@@ -2056,7 +1924,6 @@ function showIncomingChallenge(
     ) {
         return;
     }
-
     if (
         Date.now() -
             (
@@ -2066,19 +1933,26 @@ function showIncomingChallenge(
             ) >
         30000
     ) {
-        window.dbRemove(
+        window.dbUpdate(
             window.dbRef(
                 window.db,
                 `challenges/${playerId}`
-            )
+            ),
+            {
+                status:
+                    'expired'
+            }
+        ).catch(
+            e =>
+                console.error(
+                    'Could not expire incoming challenge',
+                    e
+                )
         );
-
         return;
     }
-
     activeIncoming =
         data;
-
     getEl(
         'challengeText'
     ).textContent =
@@ -2089,13 +1963,80 @@ function showIncomingChallenge(
                     ? 'BO3'
                     : 'BO5'
         }]`;
-
     getEl(
         'challengeModal'
     ).style.display =
         'flex';
 }
-
+function createOnlineMatchData(
+    challenge
+) {
+    const emptyBoards =
+        Array(9)
+            .fill()
+            .map(
+                () =>
+                    Array(9).fill('')
+            );
+    return {
+        matchId:
+            challenge.matchId,
+        format:
+            challenge.format,
+        scores: {
+            X: 0,
+            O: 0
+        },
+        players: {
+            X: {
+                id:
+                    challenge.fromId,
+                name:
+                    challenge.fromName
+            },
+            O: {
+                id:
+                    playerId,
+                name:
+                    playerName
+            }
+        },
+        boardStates:
+            JSON.stringify(
+                emptyBoards
+            ),
+        boardWins:
+            JSON.stringify(
+                Array(9).fill(null)
+            ),
+        currentPlayer:
+            'X',
+        activeBoardIndex:
+            -1,
+        lastMove:
+            null,
+        lastActive:
+            Date.now(),
+        turnStartedAt:
+            Date.now(),
+        result:
+            null,
+        rematch:
+            null,
+        rematchToken:
+            null,
+        rematchApplied:
+            null,
+        roundProcessed:
+            false,
+        roundWinner:
+            null,
+        resetRequest:
+            null,
+        resetAccepted:
+            null
+    };
+}
 getEl(
     'acceptChallengeBtn'
 ).onclick =
@@ -2107,151 +2048,124 @@ getEl(
         ) {
             return;
         }
-
         const d =
             activeIncoming;
-
         const challengeRef =
             window.dbRef(
                 window.db,
                 `challenges/${playerId}`
             );
-
-        const tx =
-            await window.dbTransaction(
-                challengeRef,
-                current => {
-                    if (
-                        !current ||
-                        current.id !==
-                            d.id ||
-                        current.status !==
-                            'pending'
-                    ) {
-                        return;
+        const now =
+            Date.now();
+        try {
+            const claim =
+                await window.dbTransaction(
+                    challengeRef,
+                    current => {
+                        if (
+                            !current ||
+                            current.id !==
+                                d.id ||
+                            current.status !==
+                                'pending' ||
+                            now -
+                                (
+                                    Number(
+                                        current.time
+                                    ) || 0
+                                ) >
+                                30000
+                        ) {
+                            return;
+                        }
+                        current.status =
+                            'accepting';
+                        current.acceptedAt =
+                            Date.now();
+                        return current;
                     }
-
-                    current.status =
-                        'accepted';
-
-                    return current;
+                );
+            if (!claim.committed) {
+                getEl(
+                    'challengeModal'
+                ).style.display =
+                    'none';
+                activeIncoming =
+                    null;
+                return showCustomAlert(
+                    'Challenge',
+                    'This challenge is no longer available.'
+                );
+            }
+            const currentChallenge =
+                claim.snapshot.val() ||
+                    d;
+            const matchData =
+                createOnlineMatchData(
+                    currentChallenge
+                );
+            const rootRef =
+                window.dbRef(
+                    window.db
+                );
+            await window.dbUpdate(
+                rootRef,
+                {
+                    [`matches/${d.matchId}`]:
+                        matchData,
+                    [`challenges/${playerId}`]: {
+                        ...currentChallenge,
+                        status:
+                            'accepted',
+                        acceptedAt:
+                            Date.now()
+                    }
                 }
             );
-
-        if (!tx.committed) {
             getEl(
                 'challengeModal'
             ).style.display =
                 'none';
-
             activeIncoming =
                 null;
-
-            return;
-        }
-
-        const matchRef =
-            window.dbRef(
-                window.db,
-                `matches/${d.matchId}`
+            startOnlineMatch(
+                d.matchId,
+                'O',
+                d.fromName,
+                d.fromId,
+                d.format
             );
-
-        await window.dbTransaction(
-            matchRef,
-            current =>
-                current ||
-                {
-                    matchId:
-                        d.matchId,
-
-                    format:
-                        d.format,
-
-                    scores: {
-                        X: 0,
-                        O: 0
-                    },
-
-                    players: {
-                        X: {
-                            id:
-                                d.fromId,
-
-                            name:
-                                d.fromName
-                        },
-
-                        O: {
-                            id:
-                                playerId,
-
-                            name:
-                                playerName
+        } catch (e) {
+            console.error(
+                'Could not accept challenge',
+                e
+            );
+            try {
+                await window.dbTransaction(
+                    challengeRef,
+                    current => {
+                        if (
+                            current?.id === d.id &&
+                            current.status === 'accepting'
+                        ) {
+                            current.status = 'pending';
+                            return current;
                         }
-                    },
-
-                    boardStates:
-                        JSON.stringify(
-                            Array(9)
-                                .fill()
-                                .map(
-                                    () =>
-                                        Array(
-                                            9
-                                        ).fill('')
-                                )
-                        ),
-
-                    boardWins:
-                        JSON.stringify(
-                            Array(9).fill(
-                                null
-                            )
-                        ),
-
-                    currentPlayer:
-                        'X',
-
-                    activeBoardIndex:
-                        -1,
-
-                    lastMove:
-                        null,
-
-                    lastActive:
-                        Date.now(),
-
-                    turnStartedAt:
-                        Date.now(),
-
-                    result:
-                        null,
-
-                    rematch:
-                        null,
-
-                    roundProcessed:
-                        false
-                }
-        );
-
-        getEl(
-            'challengeModal'
-        ).style.display =
-            'none';
-
-        activeIncoming =
-            null;
-
-        startOnlineMatch(
-            d.matchId,
-            'O',
-            d.fromName,
-            d.fromId,
-            d.format
-        );
+                        return current;
+                    }
+                );
+            } catch (rollbackError) {
+                console.error(
+                    'Could not restore challenge state',
+                    rollbackError
+                );
+            }
+            showCustomAlert(
+                'Challenge',
+                'Could not accept the challenge. Please try again.'
+            );
+        }
     };
-
 getEl(
     'rejectChallengeBtn'
 ).onclick =
@@ -2260,42 +2174,91 @@ getEl(
             activeIncoming &&
             window.db
         ) {
-            await window.dbUpdate(
-                window.dbRef(
-                    window.db,
-                    `challenges/${playerId}`
-                ),
-                {
-                    status:
-                        'declined'
-                }
-            );
+            const d =
+                activeIncoming;
+            try {
+                await window.dbTransaction(
+                    window.dbRef(
+                        window.db,
+                        `challenges/${playerId}`
+                    ),
+                    current => {
+                        if (
+                            !current ||
+                            current.id !==
+                                d.id ||
+                            current.status !==
+                                'pending'
+                        ) {
+                            return current;
+                        }
+                        current.status =
+                            'declined';
+                        current.declinedAt =
+                            Date.now();
+                        return current;
+                    }
+                );
+            } catch (e) {
+                console.error(
+                    'Could not decline challenge',
+                    e
+                );
+            }
         }
-
         getEl(
             'challengeModal'
         ).style.display =
             'none';
-
         activeIncoming =
             null;
     };
-
 getEl(
     'cancelChallengeBtn'
 ).onclick =
-    () => {
+    async () => {
         getEl(
             'challengeModal'
         ).style.display =
             'none';
+        if (
+            !window.db ||
+            !outgoingChallengeId ||
+            !outgoingChallengeTargetId
+        ) {
+            return;
+        }
+        try {
+            await window.dbTransaction(
+                window.dbRef(
+                    window.db,
+                    `challenges/${outgoingChallengeTargetId}`
+                ),
+                current => {
+                    if (
+                        !current ||
+                        current.id !==
+                            outgoingChallengeId ||
+                        current.status !==
+                            'pending'
+                    ) {
+                        return current;
+                    }
+                    current.status =
+                        'cancelled';
+                    return current;
+                }
+            );
+        } catch (e) {
+            console.error(
+                'Could not cancel challenge',
+                e
+            );
+        }
     };
-
-
 // ==========================================
 // 18. Core Game
 // ==========================================
-
 function isBoardFull(
     arr
 ) {
@@ -2303,7 +2266,6 @@ function isBoardFull(
         c => c !== ''
     );
 }
-
 function checkSmallWin(
     arr
 ) {
@@ -2317,7 +2279,6 @@ function checkSmallWin(
         [0,4,8],
         [2,4,6]
     ];
-
     for (
         const [a,b,c]
         of lines
@@ -2330,10 +2291,8 @@ function checkSmallWin(
             return arr[a];
         }
     }
-
     return null;
 }
-
 function checkUltimateWin() {
     const lines = [
         [0,1,2],
@@ -2345,7 +2304,6 @@ function checkUltimateWin() {
         [0,4,8],
         [2,4,6]
     ];
-
     for (
         const [a,b,c]
         of lines
@@ -2362,19 +2320,15 @@ function checkUltimateWin() {
             return boardWins[a];
         }
     }
-
     return null;
 }
-
 function initGameHTML() {
     const board =
         getEl(
             'ultimateBoard'
         );
-
     board.innerHTML =
         '';
-
     for (
         let b = 0;
         b < 9;
@@ -2384,22 +2338,17 @@ function initGameHTML() {
             document.createElement(
                 'div'
             );
-
         local.className =
             `local-grid id-bg-${b}`;
-
         const overlay =
             document.createElement(
                 'div'
             );
-
         overlay.className =
             `overlay-bg hidden id-ov-${b}`;
-
         local.appendChild(
             overlay
         );
-
         for (
             let c = 0;
             c < 9;
@@ -2409,34 +2358,28 @@ function initGameHTML() {
                 document.createElement(
                     'button'
                 );
-
             btn.className =
                 `cell-btn id-btn-${b}-${c}`;
-
             btn.onclick =
                 () =>
                     tryMove(
                         b,
                         c
                     );
-
             local.appendChild(
                 btn
             );
         }
-
         board.appendChild(
             local
         );
     }
 }
-
 function renderGameUI() {
     getEl(
         'turnIndicator'
     ).textContent =
         currentPlayer;
-
     getEl(
         'turnIndicator'
     ).className =
@@ -2445,17 +2388,14 @@ function renderGameUI() {
                 ? 'cell-x'
                 : 'cell-o'
         }`;
-
     getEl(
         'scoreX'
     ).textContent =
         scores.X;
-
     getEl(
         'scoreO'
     ).textContent =
         scores.O;
-
     for (
         let b = 0;
         b < 9;
@@ -2465,29 +2405,24 @@ function renderGameUI() {
             document.querySelector(
                 `.id-bg-${b}`
             );
-
         const overlay =
             document.querySelector(
                 `.id-ov-${b}`
             );
-
         if (
             boardWins[b]
         ) {
             overlay.classList.remove(
                 'hidden'
             );
-
             bg.classList.add(
                 'local-board-won'
             );
-
             overlay.textContent =
                 boardWins[b] ===
                 'DRAW'
                     ? '➖'
                     : boardWins[b];
-
             overlay.className =
                 `overlay-bg id-ov-${b} ${
                     boardWins[b] ===
@@ -2502,12 +2437,10 @@ function renderGameUI() {
             overlay.classList.add(
                 'hidden'
             );
-
             bg.classList.remove(
                 'local-board-won'
             );
         }
-
         const active =
             (
                 activeBoardIndex ===
@@ -2516,13 +2449,11 @@ function renderGameUI() {
                     b
             ) &&
             !boardWins[b];
-
         bg.classList.remove(
             'active-local-board',
             'waiting-local',
             'inactive-local'
         );
-
         if (active) {
             if (
                 gameMode ===
@@ -2543,7 +2474,6 @@ function renderGameUI() {
                 'inactive-local'
             );
         }
-
         for (
             let c = 0;
             c < 9;
@@ -2553,16 +2483,12 @@ function renderGameUI() {
                 document.querySelector(
                     `.id-btn-${b}-${c}`
                 );
-
             if (!btn)
                 continue;
-
             const val =
                 boardStates[b][c];
-
             btn.textContent =
                 val;
-
             btn.className =
                 `cell-btn id-btn-${b}-${c} ${
                     val === 'X'
@@ -2577,7 +2503,6 @@ function renderGameUI() {
                         ? 'last-move-highlight'
                         : ''
                 }`;
-
             btn.disabled =
                 val !== '' ||
                 !active ||
@@ -2591,12 +2516,9 @@ function renderGameUI() {
         }
     }
 }
-
-
 // ==========================================
 // 19. Turn Processing
 // ==========================================
-
 function processTurn(
     b,
     c,
@@ -2605,29 +2527,23 @@ function processTurn(
     const p =
         simulatedPlayer ||
         currentPlayer;
-
     boardStates[b][c] =
         p;
-
     lastMove = {
         b,
         c
     };
-
     const smallWin =
         checkSmallWin(
             boardStates[b]
         );
-
     if (smallWin) {
         boardWins[b] =
             smallWin;
-
         if (
             !simulatedPlayer
         ) {
             playSound('win');
-
             getEl(
                 'htmlRoot'
             )
@@ -2635,7 +2551,6 @@ function processTurn(
                 .add(
                     'screen-shake'
                 );
-
             setTimeout(
                 () =>
                     getEl(
@@ -2649,7 +2564,6 @@ function processTurn(
             );
         }
     }
-
     else if (
         isBoardFull(
             boardStates[b]
@@ -2658,15 +2572,12 @@ function processTurn(
         boardWins[b] =
             'DRAW';
     }
-
     const ultimateWin =
         checkUltimateWin();
-
     const ultimateDraw =
         boardWins.every(
             x => x !== null
         );
-
     if (
         ultimateWin ||
         ultimateDraw
@@ -2676,7 +2587,6 @@ function processTurn(
             'DRAW'
         );
     }
-
     if (
         boardWins[c] !==
             null ||
@@ -2690,36 +2600,29 @@ function processTurn(
         activeBoardIndex =
             c;
     }
-
     currentPlayer =
         p === 'X'
             ? 'O'
             : 'X';
 }
-
-
 // ==========================================
 // 20. Round End
 // ==========================================
-
 async function handleRoundEnd(
     winner,
     reason = 'game'
 ) {
     winner =
         winner || 'DRAW';
-
     if (
         winner !== 'DRAW'
     ) {
         scores[winner]++;
     }
-
     const cupWon =
         winner !== 'DRAW' &&
         scores[winner] >=
             targetWins;
-
     if (
         gameMode ===
             'online' &&
@@ -2734,24 +2637,20 @@ async function handleRoundEnd(
                 winner
             );
         }
-
         const result =
             await publishMatchResult(
                 currentMatchId,
                 winner,
                 reason
             );
-
         if (result) {
             await handleOnlineResult(
                 result,
                 true
             );
         }
-
         return;
     }
-
     if (
         cupWon ||
         currentFormat ===
@@ -2764,34 +2663,28 @@ async function handleRoundEnd(
                 : winner === 'X'
                     ? 'Win'
                     : 'Loss';
-
         if (
             outcome === 'Win'
         ) {
             userStats.wins++;
         }
-
         if (
             outcome === 'Loss'
         ) {
             userStats.losses++;
         }
-
         userStats.points +=
             winner === 'DRAW'
                 ? 1
                 : outcome === 'Win'
                     ? 3
                     : -1;
-
         userStats.history.push({
             res:
                 outcome,
-
             opp:
                 opponentName
         });
-
         if (
             window.db &&
             playerId
@@ -2805,10 +2698,8 @@ async function handleRoundEnd(
             );
         }
     }
-
     isUI_Locked =
         true;
-
     playSound(
         winner === 'DRAW'
             ? 'click'
@@ -2816,7 +2707,6 @@ async function handleRoundEnd(
                 ? 'win'
                 : 'lose'
     );
-
     getEl(
         'victoryTitle'
     ).textContent =
@@ -2827,7 +2717,6 @@ async function handleRoundEnd(
                     ? playerName
                     : opponentName
             }`;
-
     getEl(
         'victoryText'
     ).textContent =
@@ -2836,7 +2725,6 @@ async function handleRoundEnd(
             : cupWon
                 ? `Cup Won! Score: ${scores.X}-${scores.O}`
                 : `Round End! Score: ${scores.X}-${scores.O}`;
-
     getEl(
         'acceptRematchBtn'
     ).textContent =
@@ -2844,13 +2732,11 @@ async function handleRoundEnd(
         currentFormat === '1'
             ? 'Play Again'
             : 'Next Round / Ready';
-
     getEl(
         'victoryModal'
     ).style.display =
         'flex';
 }
-
 async function finishOnlineRound(
     winner
 ) {
@@ -2860,13 +2746,11 @@ async function finishOnlineRound(
     ) {
         return;
     }
-
     const matchRef =
         window.dbRef(
             window.db,
             `matches/${currentMatchId}`
         );
-
     const tx =
         await window.dbTransaction(
             matchRef,
@@ -2878,20 +2762,16 @@ async function finishOnlineRound(
                 ) {
                     return current;
                 }
-
                 current.roundProcessed =
                     true;
-
                 current.roundWinner =
                     winner;
-
                 current.scores =
                     current.scores ||
                     {
                         X: 0,
                         O: 0
                     };
-
                 if (
                     winner !==
                     'DRAW'
@@ -2907,30 +2787,23 @@ async function finishOnlineRound(
                             ) || 0
                         ) + 1;
                 }
-
                 current.lastActive =
                     Date.now();
-
                 return current;
             }
         );
-
     const d =
         tx.snapshot.val();
-
     if (
         !d?.roundWinner
     ) {
         return;
     }
-
     scores =
         d.scores ||
         scores;
-
     isUI_Locked =
         true;
-
     getEl(
         'victoryTitle'
     ).textContent =
@@ -2941,28 +2814,22 @@ async function finishOnlineRound(
                     ? playerName
                     : opponentName
             }`;
-
     getEl(
         'victoryText'
     ).textContent =
         `Score: ${scores.X}-${scores.O}`;
-
     getEl(
         'acceptRematchBtn'
     ).textContent =
         'Next Round / Ready';
-
     getEl(
         'victoryModal'
     ).style.display =
         'flex';
 }
-
-
 // ==========================================
 // 21. Offline / AI
 // ==========================================
-
 document
     .querySelectorAll(
         '.ai-diff-btn'
@@ -2970,21 +2837,17 @@ document
     .forEach(btn => {
         btn.onclick =
             e => {
-                playSound('start');
-
+                playSound('click');
                 aiLevel =
                     e.target.getAttribute(
                         'data-level'
                     );
-
                 gameMode =
                     'offline';
-
                 currentFormat =
                     getEl(
                         'matchFormatSelect'
                     ).value;
-
                 targetWins =
                     currentFormat ===
                         '1'
@@ -2993,78 +2856,65 @@ document
                             '3'
                             ? 2
                             : 3;
-
                 opponentName =
                     `AI (${aiLevel})`;
-
-                getEl(
-                    'gameModeBadge'
-                ).textContent =
-                    opponentName;
-
+                updateGameModeBadges(
+                    opponentName
+                );
                 getEl(
                     'emojiBar'
                 ).classList.add(
                     'hidden'
                 );
-
                 getEl(
                     'turnTimerContainer'
                 ).classList.add(
                     'hidden'
                 );
-
                 startLocalRound(
                     true
                 );
-
                 navigate(
                     '#game'
                 );
             };
     });
-
 function startLocalRound(
     fullReset
 ) {
+    if (aiMoveTimer) {
+        clearTimeout(aiMoveTimer);
+        aiMoveTimer = null;
+    }
     if (fullReset) {
         scores = {
             X: 0,
             O: 0
         };
     }
-
     boardStates =
         Array(9)
             .fill()
             .map(() =>
                 Array(9).fill('')
             );
-
     boardWins =
         Array(9).fill(null);
-
     currentPlayer =
         'X';
-
     activeBoardIndex =
         -1;
-
     lastMove =
         null;
-
     isUI_Locked =
         false;
-
     getEl(
         'victoryModal'
     ).style.display =
         'none';
-
     initGameHTML();
     renderGameUI();
 }
-
 async function tryMove(
     b,
     c
@@ -3075,9 +2925,7 @@ async function tryMove(
     ) {
         return;
     }
-
     playSound('click');
-
     if (
         gameMode ===
         'offline'
@@ -3086,30 +2934,33 @@ async function tryMove(
             b,
             c
         );
-
         renderGameUI();
-
         if (
             !isUI_Locked &&
             currentPlayer === 'O'
         ) {
             isUI_Locked =
                 true;
-
-            setTimeout(
-                () => {
-                    isUI_Locked =
-                        false;
-
-                    makeAiMove();
-                },
-                600
-            );
+            aiMoveTimer =
+                setTimeout(
+                    () => {
+                        aiMoveTimer = null;
+                        if (
+                            gameMode !== 'offline' ||
+                            currentPlayer !== 'O' ||
+                            getEl('victoryModal').style.display === 'flex'
+                        ) {
+                            return;
+                        }
+                        isUI_Locked =
+                            false;
+                        makeAiMove();
+                    },
+                    600
+                );
         }
-
         return;
     }
-
     if (
         !currentMatchId ||
         currentPlayer !==
@@ -3117,16 +2968,13 @@ async function tryMove(
     ) {
         return;
     }
-
     isUI_Locked =
         true;
-
     const matchRef =
         window.dbRef(
             window.db,
             `matches/${currentMatchId}`
         );
-
     try {
         const tx =
             await window.dbTransaction(
@@ -3141,16 +2989,13 @@ async function tryMove(
                     ) {
                         return;
                     }
-
                     let states;
                     let wins;
-
                     try {
                         states =
                             JSON.parse(
                                 current.boardStates
                             );
-
                         wins =
                             JSON.parse(
                                 current.boardWins
@@ -3158,7 +3003,6 @@ async function tryMove(
                     } catch (e) {
                         return;
                     }
-
                     if (
                         !Array.isArray(
                             states[b]
@@ -3169,30 +3013,24 @@ async function tryMove(
                     ) {
                         return;
                     }
-
                     const allowed =
                         current.activeBoardIndex ===
                             -1 ||
                         Number(
                             current.activeBoardIndex
                         ) === b;
-
                     if (!allowed)
                         return;
-
                     states[b][c] =
                         myRole;
-
                     const smallWin =
                         checkSmallWin(
                             states[b]
                         );
-
                     if (smallWin) {
                         wins[b] =
                             smallWin;
                     }
-
                     else if (
                         isBoardFull(
                             states[b]
@@ -3201,7 +3039,6 @@ async function tryMove(
                         wins[b] =
                             'DRAW';
                     }
-
                     const ultimate =
                         (() => {
                             const lines = [
@@ -3214,7 +3051,6 @@ async function tryMove(
                                 [0,4,8],
                                 [2,4,6]
                             ];
-
                             for (
                                 const [
                                     x,
@@ -3235,17 +3071,14 @@ async function tryMove(
                                     return wins[x];
                                 }
                             }
-
                             return null;
                         })();
-
                     const full =
                         wins.every(
                             x =>
                                 x !==
                                 null
                         );
-
                     const next =
                         (
                             ultimate ||
@@ -3260,52 +3093,41 @@ async function tryMove(
                             )
                                 ? -1
                                 : c;
-
                     current.boardStates =
                         JSON.stringify(
                             states
                         );
-
                     current.boardWins =
                         JSON.stringify(
                             wins
                         );
-
                     current.activeBoardIndex =
                         next;
-
                     current.currentPlayer =
                         myRole === 'X'
                             ? 'O'
                             : 'X';
-
                     current.lastMove = {
                         b,
                         c
                     };
-
                     current.lastActive =
                         Date.now();
-
                     current.turnStartedAt =
                         Date.now();
-
                     return current;
                 }
             );
-
         if (
             !tx.committed
         ) {
             return;
         }
-
     } finally {
         isUI_Locked =
             false;
     }
 }
-
 function makeAiMove() {
     const targetBoards =
         activeBoardIndex ===
@@ -3324,9 +3146,7 @@ function makeAiMove() {
             : [
                 activeBoardIndex
             ];
-
     const moves = [];
-
     targetBoards.forEach(
         b => {
             for (
@@ -3340,9 +3160,7 @@ function makeAiMove() {
                 ) {
                     continue;
                 }
-
                 let score = 0;
-
                 if (
                     aiLevel ===
                         'medium' ||
@@ -3351,7 +3169,6 @@ function makeAiMove() {
                 ) {
                     boardStates[b][c] =
                         'O';
-
                     if (
                         checkSmallWin(
                             boardStates[b]
@@ -3360,13 +3177,10 @@ function makeAiMove() {
                         score +=
                             100;
                     }
-
                     boardStates[b][c] =
                         '';
-
                     boardStates[b][c] =
                         'X';
-
                     if (
                         checkSmallWin(
                             boardStates[b]
@@ -3375,11 +3189,9 @@ function makeAiMove() {
                         score +=
                             50;
                     }
-
                     boardStates[b][c] =
                         '';
                 }
-
                 if (
                     aiLevel ===
                     'impossible'
@@ -3387,7 +3199,6 @@ function makeAiMove() {
                     if (c === 4) {
                         score += 5;
                     }
-
                     else if (
                         [
                             0,
@@ -3399,7 +3210,6 @@ function makeAiMove() {
                         score += 2;
                     }
                 }
-
                 moves.push({
                     b,
                     c,
@@ -3410,7 +3220,6 @@ function makeAiMove() {
             }
         }
     );
-
     if (
         moves.length > 0
     ) {
@@ -3419,24 +3228,18 @@ function makeAiMove() {
                 b.score -
                 a.score
         );
-
         const best =
             moves[0];
-
         processTurn(
             best.b,
             best.c
         );
-
         renderGameUI();
     }
 }
-
-
 // ==========================================
 // 22. Online Timer
 // ==========================================
-
 function stopTurnTimer() {
     if (
         turnTimerInterval
@@ -3444,25 +3247,41 @@ function stopTurnTimer() {
         clearInterval(
             turnTimerInterval
         );
-
         turnTimerInterval =
             null;
     }
+    activeTurnTimerKey =
+        null;
+    timeoutPublishedForTurn =
+        false;
 }
-
 function startTurnTimer(d) {
-    stopTurnTimer();
-
     if (
-        gameMode !==
-            'online' ||
+        gameMode !== 'online' ||
         !d?.turnStartedAt
+    ) {
+        stopTurnTimer();
+        return;
+    }
+    const key =
+        `${d.turnStartedAt}:${d.currentPlayer}`;
+    if (
+        turnTimerInterval &&
+        activeTurnTimerKey === key
     ) {
         return;
     }
-
+    stopTurnTimer();
+    activeTurnTimerKey =
+        key;
     const tick =
         async () => {
+            if (
+                activeTurnTimerKey !== key ||
+                !currentMatchId
+            ) {
+                return;
+            }
             const left =
                 Math.max(
                     0,
@@ -3477,18 +3296,19 @@ function startTurnTimer(d) {
                                 1000
                         )
                 );
-
             getEl(
                 'turnTimerText'
             ).textContent =
                 left;
-
             if (
                 left === 0 &&
                 d.currentPlayer ===
                     myRole &&
-                !d.result
+                !d.result &&
+                !timeoutPublishedForTurn
             ) {
+                timeoutPublishedForTurn =
+                    true;
                 await publishMatchResult(
                     currentMatchId,
                     myRole === 'X'
@@ -3498,21 +3318,16 @@ function startTurnTimer(d) {
                 );
             }
         };
-
     tick();
-
     turnTimerInterval =
         setInterval(
             tick,
             500
         );
 }
-
-
 // ==========================================
 // 23. Disconnect Grace
 // ==========================================
-
 function stopDisconnectGrace() {
     if (
         disconnectGraceInterval
@@ -3520,15 +3335,12 @@ function stopDisconnectGrace() {
         clearInterval(
             disconnectGraceInterval
         );
-
         disconnectGraceInterval =
             null;
     }
-
     opponentOfflineSince =
         0;
 }
-
 function watchOpponentPresence() {
     if (
         opponentPresenceListener
@@ -3537,16 +3349,13 @@ function watchOpponentPresence() {
         opponentPresenceListener =
             null;
     }
-
     stopDisconnectGrace();
-
     if (
         !window.db ||
         !opponentId
     ) {
         return;
     }
-
     opponentPresenceListener =
         window.dbOnValue(
             window.dbRef(
@@ -3557,7 +3366,6 @@ function watchOpponentPresence() {
                 const u =
                     snap.val() ||
                     {};
-
                 const offline =
                     u.status ===
                         'offline' ||
@@ -3568,7 +3376,6 @@ function watchOpponentPresence() {
                             ) || 0
                         ) >
                         15000;
-
                 if (
                     offline &&
                     !matchResultData
@@ -3579,7 +3386,6 @@ function watchOpponentPresence() {
                         opponentOfflineSince =
                             Date.now();
                     }
-
                     if (
                         !disconnectGraceInterval
                     ) {
@@ -3589,14 +3395,12 @@ function watchOpponentPresence() {
                                     const elapsed =
                                         Date.now() -
                                         opponentOfflineSince;
-
                                     if (
                                         elapsed >=
                                             120000 &&
                                         !matchResultData
                                     ) {
                                         stopDisconnectGrace();
-
                                         await publishMatchResult(
                                             currentMatchId,
                                             myRole ===
@@ -3616,12 +3420,9 @@ function watchOpponentPresence() {
             }
         );
 }
-
-
 // ==========================================
 // 24. Online Match
 // ==========================================
-
 function startOnlineMatch(
     matchId,
     role,
@@ -3629,68 +3430,59 @@ function startOnlineMatch(
     oppId,
     format
 ) {
+    if (matchStartDeadlineTimer) {
+        clearTimeout(
+            matchStartDeadlineTimer
+        );
+        matchStartDeadlineTimer = null;
+    }
+    onlineMatchStartedAt =
+        Date.now();
     currentMatchId =
         matchId;
-
     myRole =
         role;
-
     opponentName =
         oppName;
-
     opponentId =
         oppId;
-
     gameMode =
         'online';
-
     currentFormat =
         format;
-
     targetWins =
         format === '1'
             ? 1
             : format === '3'
                 ? 2
                 : 3;
-
     lastHandledResultId =
         null;
-
     matchResultShown =
         false;
-
     matchResultData =
         null;
-
-    getEl(
-        'gameModeBadge'
-    ).textContent =
-        `YOU VS ${opponentName}`;
-
+    updateGameModeBadges(
+        `YOU VS ${opponentName}`
+    );
     getEl(
         'emojiBar'
     ).classList.remove(
         'hidden'
     );
-
     getEl(
         'turnTimerContainer'
     ).classList.remove(
         'hidden'
     );
-
     getEl(
         'victoryModal'
     ).style.display =
         'none';
-
     initGameHTML();
-
     navigate(
         '#game'
     );
-
     window.dbUpdate(
         window.dbRef(
             window.db,
@@ -3699,12 +3491,10 @@ function startOnlineMatch(
         {
             status:
                 'in-game',
-
             lastActive:
                 Date.now()
         }
     );
-
     if (
         matchListener
     ) {
@@ -3712,37 +3502,50 @@ function startOnlineMatch(
         matchListener =
             null;
     }
-
     const matchRef =
         window.dbRef(
             window.db,
             `matches/${matchId}`
         );
-
     watchOpponentPresence();
-
     matchListener =
         window.dbOnValue(
             matchRef,
             async snap => {
                 const d =
                     snap.val();
-
                 if (!d) {
                     stopTurnTimer();
-
+                    if (
+                        Date.now() -
+                            onlineMatchStartedAt <
+                            10000
+                    ) {
+                        return;
+                    }
+                    matchStartDeadlineTimer =
+                        null;
+                    showCustomAlert(
+                        'Match',
+                        'The match room could not be created. Returning to menu.'
+                    );
                     return leaveMatch(
+                        true,
                         false
                     );
                 }
-
+                if (matchStartDeadlineTimer) {
+                    clearTimeout(
+                        matchStartDeadlineTimer
+                    );
+                    matchStartDeadlineTimer = null;
+                }
                 try {
                     boardStates =
                         JSON.parse(
                             d.boardStates ||
                             '[]'
                         );
-
                     boardWins =
                         JSON.parse(
                             d.boardWins ||
@@ -3758,107 +3561,163 @@ function startOnlineMatch(
                                         9
                                     ).fill('')
                             );
-
                     boardWins =
                         Array(9).fill(
                             null
                         );
                 }
-
                 activeBoardIndex =
                     d.activeBoardIndex ??
                     -1;
-
                 currentPlayer =
                     d.currentPlayer ||
                     'X';
-
                 lastMove =
                     d.lastMove ||
                     null;
-
                 scores =
                     d.scores || {
                         X: 0,
                         O: 0
                     };
-
+                if (
+                    d.rematch?.X === true &&
+                    d.rematch?.O === true
+                ) {
+                    const token =
+                        d.rematchToken ||
+                        null;
+                    if (
+                        myRole === 'X' &&
+                        token &&
+                        d.rematchApplied !== token
+                    ) {
+                        const emptyBoards =
+                            Array(9)
+                                .fill()
+                                .map(
+                                    () =>
+                                        Array(9).fill('')
+                                );
+                        await window.dbUpdate(
+                            matchRef,
+                            {
+                                boardStates:
+                                    JSON.stringify(
+                                        emptyBoards
+                                    ),
+                                boardWins:
+                                    JSON.stringify(
+                                        Array(9).fill(null)
+                                    ),
+                                currentPlayer:
+                                    'X',
+                                activeBoardIndex:
+                                    -1,
+                                lastMove:
+                                    null,
+                                roundProcessed:
+                                    false,
+                                roundWinner:
+                                    null,
+                                rematch:
+                                    null,
+                                rematchToken:
+                                    null,
+                                rematchApplied:
+                                    token,
+                                result:
+                                    null,
+                                scores:
+                                    d.newCup
+                                        ? {
+                                            X: 0,
+                                            O: 0
+                                        }
+                                        : scores,
+                                turnStartedAt:
+                                    Date.now(),
+                                lastActive:
+                                    Date.now()
+                            }
+                        );
+                        return;
+                    }
+                    // Both players are ready. Only X performs the one-time reset.
+                    return;
+                }
+```
+```javascript
                 if (d.result) {
                     stopTurnTimer();
-
                     matchResultData =
                         d.result;
-
                     await handleOnlineResult(
                         d.result,
                         !matchResultShown
                     );
-
                     matchResultShown =
                         true;
-
                     const mine =
                         d.result
                             .players?.[
                             playerId
                         ];
-
                     getEl(
                         'victoryTitle'
                     ).textContent =
-                        mine?.outcome ===
-                            'Win'
+                        mine?.outcome === 'Win'
                             ? 'YOU WON!'
-                            : mine?.outcome ===
-                                'Loss'
-                                ? 'YOU LOST'
+                            : mine?.outcome === 'Loss'
+                                ? 'YOU LOST!'
                                 : 'DRAW!';
-
-                    getEl(
-                        'victoryText'
-                    ).textContent =
+                    if (
                         d.result.type ===
                             'forfeit' ||
                         d.result.type ===
                             'timeout' ||
                         d.result.type ===
                             'disconnect'
-                            ? `${
-                                mine?.opponentName ||
-                                opponentName
-                            } lost the match.`
-                            : 'Match finished. Ready for a new game.';
-
+                    ) {
+                        getEl(
+                            'victoryText'
+                        ).textContent =
+                            mine?.outcome === 'Win'
+                                ? `${
+                                    mine?.opponentName ||
+                                    opponentName
+                                } left the match.`
+                                : mine?.outcome === 'Loss'
+                                    ? 'You left the match.'
+                                    : 'The match ended.';
+                    } else {
+                        getEl(
+                            'victoryText'
+                        ).textContent =
+                            'Match finished. Ready for a new game.';
+                    }
                     getEl(
                         'acceptRematchBtn'
                     ).textContent =
                         'Play Again';
-
                     getEl(
                         'victoryModal'
                     ).style.display =
                         'flex';
-
                     isUI_Locked =
                         true;
-
                     renderGameUI();
-
                     return;
                 }
-
                 startTurnTimer(d);
-
                 const ultimate =
                     checkUltimateWin();
-
                 const draw =
                     !ultimate &&
                     boardWins.every(
                         x =>
                             x !== null
                     );
-
                 if (
                     (
                         ultimate ||
@@ -3871,7 +3730,6 @@ function startOnlineMatch(
                         'DRAW'
                     );
                 }
-
                 else if (
                     !ultimate &&
                     !draw &&
@@ -3880,13 +3738,11 @@ function startOnlineMatch(
                     isUI_Locked =
                         currentPlayer !==
                         myRole;
-
                     getEl(
                         'victoryModal'
                     ).style.display =
                         'none';
                 }
-
                 if (
                     d.roundProcessed &&
                     d.roundWinner &&
@@ -3894,7 +3750,6 @@ function startOnlineMatch(
                 ) {
                     isUI_Locked =
                         true;
-
                     getEl(
                         'victoryTitle'
                     ).textContent =
@@ -3907,103 +3762,21 @@ function startOnlineMatch(
                                     ? playerName
                                     : opponentName
                             }`;
-
                     getEl(
                         'victoryText'
                     ).textContent =
                         `Score: ${scores.X}-${scores.O}`;
-
                     getEl(
                         'acceptRematchBtn'
                     ).textContent =
-                        'Next Round / Ready';
-
+                        d.rematch?.[myRole]
+                            ? 'Waiting...'
+                            : 'Next Round / Ready';
                     getEl(
                         'victoryModal'
                     ).style.display =
                         'flex';
                 }
-
-                if (
-                    d.rematch?.X &&
-                    d.rematch?.O
-                ) {
-                    const token =
-                        d.rematchToken ||
-                        `${Date.now()}`;
-
-                    if (
-                        myRole ===
-                            'X' &&
-                        d.rematchApplied !==
-                            token
-                    ) {
-                        await window.dbUpdate(
-                            matchRef,
-                            {
-                                boardStates:
-                                    JSON.stringify(
-                                        Array(9)
-                                            .fill()
-                                            .map(
-                                                () =>
-                                                    Array(
-                                                        9
-                                                    ).fill('')
-                                            )
-                                    ),
-
-                                boardWins:
-                                    JSON.stringify(
-                                        Array(
-                                            9
-                                        ).fill(
-                                            null
-                                        )
-                                    ),
-
-                                currentPlayer:
-                                    'X',
-
-                                activeBoardIndex:
-                                    -1,
-
-                                lastMove:
-                                    null,
-
-                                roundProcessed:
-                                    false,
-
-                                roundWinner:
-                                    null,
-
-                                rematch:
-                                    null,
-
-                                rematchApplied:
-                                    token,
-
-                                result:
-                                    null,
-
-                                scores:
-                                    d.newCup
-                                        ? {
-                                            X: 0,
-                                            O: 0
-                                        }
-                                        : scores,
-
-                                turnStartedAt:
-                                    Date.now(),
-
-                                lastActive:
-                                    Date.now()
-                            }
-                        );
-                    }
-                }
-
                 if (
                     d.resetRequest &&
                     d.resetRequest !==
@@ -4013,7 +3786,6 @@ function startOnlineMatch(
                 ) {
                     lastResetRequest =
                         d.resetRequest;
-
                     showCustomConfirm(
                         'Reset Requested',
                         `${opponentName} wants to reset the current round. Accept?`,
@@ -4028,7 +3800,6 @@ function startOnlineMatch(
                         }
                     );
                 }
-
                 if (
                     d.resetAccepted &&
                     d.resetAccepted !==
@@ -4050,7 +3821,6 @@ function startOnlineMatch(
                                                 ).fill('')
                                         )
                                 ),
-
                             boardWins:
                                 JSON.stringify(
                                     Array(
@@ -4059,37 +3829,27 @@ function startOnlineMatch(
                                         null
                                     )
                                 ),
-
                             currentPlayer:
                                 'X',
-
                             activeBoardIndex:
                                 -1,
-
                             lastMove:
                                 null,
-
                             roundProcessed:
                                 false,
-
                             roundWinner:
                                 null,
-
                             resetRequest:
                                 null,
-
                             resetAccepted:
                                 null,
-
                             turnStartedAt:
                                 Date.now(),
-
                             lastActive:
                                 Date.now()
                         }
                     );
                 }
-
                 if (
                     d.emoji &&
                     d.emoji.sender !==
@@ -4099,22 +3859,39 @@ function startOnlineMatch(
                 ) {
                     lastEmojiTime =
                         d.emoji.time;
-
                     showEmoji(
                         d.emoji.char
                     );
                 }
-
                 renderGameUI();
             }
         );
+    matchStartDeadlineTimer =
+        setTimeout(
+            () => {
+                if (
+                    currentMatchId ===
+                        matchId &&
+                    Date.now() -
+                        onlineMatchStartedAt >=
+                        10000
+                ) {
+                    showCustomAlert(
+                        'Match',
+                        'The match could not start. Returning to menu.'
+                    );
+                    leaveMatch(
+                        true,
+                        false
+                    );
+                }
+            },
+            10000
+        );
 }
-
-
 // ==========================================
 // 25. Exit / Forfeit / Reset
 // ==========================================
-
 async function requestExit() {
     if (
         gameMode !==
@@ -4123,24 +3900,52 @@ async function requestExit() {
     ) {
         return leaveMatch();
     }
-
+    if (pendingExit) {
+        return;
+    }
+    pendingExit = true;
     showCustomConfirm(
         'Leave Match?',
         'Are you sure you want to leave? The opponent will win and you will lose 1 point.',
         async () => {
-            await publishMatchResult(
-                currentMatchId,
-                myRole === 'X'
-                    ? 'O'
-                    : 'X',
-                'forfeit'
-            );
+            try {
+                const result =
+                    await publishMatchResult(
+                        currentMatchId,
+                        myRole === 'X'
+                            ? 'O'
+                            : 'X',
+                        'forfeit'
+                    );
+                if (result) {
+                    await handleOnlineResult(
+                        result,
+                        false
+                    );
+                }
+                // The player who chose to leave exits locally without
+                // deleting the shared match or receiving its result modal.
+                leaveMatch(
+                    true,
+                    false
+                );
+            } catch (e) {
+                console.error(
+                    'Could not leave match',
+                    e
+                );
+                pendingExit = false;
+                showCustomAlert(
+                    'Leave Match',
+                    'Could not finish leaving the match. Please try again.'
+                );
+            }
         }
     );
 }
-
 function leaveMatch(
-    force = false
+    force = false,
+    removeRoom = false
 ) {
     if (
         gameMode ===
@@ -4151,10 +3956,14 @@ function leaveMatch(
     ) {
         return requestExit();
     }
-
     stopTurnTimer();
     stopDisconnectGrace();
-
+    if (matchStartDeadlineTimer) {
+        clearTimeout(
+            matchStartDeadlineTimer
+        );
+        matchStartDeadlineTimer = null;
+    }
     if (
         opponentPresenceListener
     ) {
@@ -4162,30 +3971,25 @@ function leaveMatch(
         opponentPresenceListener =
             null;
     }
-
     getEl(
         'victoryModal'
     ).style.display =
         'none';
-
     if (matchListener) {
         matchListener();
         matchListener =
             null;
     }
-
     const oldMatch =
         currentMatchId;
-
     currentMatchId =
         null;
-
     matchResultShown =
         false;
-
     matchResultData =
         null;
-
+    pendingExit =
+        false;
     if (
         window.db &&
         playerId
@@ -4198,15 +4002,19 @@ function leaveMatch(
             {
                 status:
                     'online',
-
                 lastActive:
                     Date.now()
             }
+        ).catch(
+            e =>
+                console.error(
+                    'Could not restore online presence',
+                    e
+                )
         );
     }
-
     if (
-        force &&
+        removeRoom &&
         oldMatch &&
         window.db
     ) {
@@ -4215,12 +4023,16 @@ function leaveMatch(
                 window.db,
                 `matches/${oldMatch}`
             )
+        ).catch(
+            e =>
+                console.error(
+                    'Could not remove match room',
+                    e
+                )
         );
     }
-
     navigate('#menu');
 }
-
 getEl(
     'surrenderBtn'
 ).onclick =
@@ -4235,20 +4047,16 @@ getEl(
                     : 'X'
             ] =
                 targetWins;
-
             handleRoundEnd(
                 myRole === 'X'
                     ? 'O'
                     : 'X',
                 'forfeit'
             );
-
             return;
         }
-
         requestExit();
     };
-
 getEl(
     'resetMatchBtn'
 ).onclick =
@@ -4261,13 +4069,11 @@ getEl(
                 false
             );
         }
-
         if (
             !currentMatchId
         ) {
             return;
         }
-
         showCustomConfirm(
             'Reset Match?',
             'Send a reset request to your opponent?',
@@ -4280,12 +4086,10 @@ getEl(
                     {
                         resetRequest:
                             myRole,
-
                         resetAccepted:
                             null
                     }
                 );
-
                 showCustomAlert(
                     'Reset Requested',
                     'Waiting for your opponent to accept.'
@@ -4293,13 +4097,11 @@ getEl(
             }
         );
     };
-
 getEl(
     'acceptRematchBtn'
 ).onclick =
     async () => {
         playSound('click');
-
         if (
             gameMode ===
             'offline'
@@ -4311,60 +4113,88 @@ getEl(
                     targetWins
             );
         }
-
         if (
-            !currentMatchId
+            !currentMatchId ||
+            !window.db
         ) {
             return;
         }
-
         getEl(
             'acceptRematchBtn'
         ).textContent =
             'Waiting...';
-
-        const token =
-            `${Date.now()}_${Math.random()
-                .toString(36)
-                .slice(2, 7)}`;
-
-        const newCup =
-            scores.X >=
-                targetWins ||
-            scores.O >=
-                targetWins ||
-            currentFormat ===
-                '1';
-
-        await window.dbUpdate(
+        const matchRef =
             window.dbRef(
                 window.db,
                 `matches/${currentMatchId}`
-            ),
-            {
-                rematch: {
-                    X:
-                        myRole ===
-                        'X',
-
-                    O:
-                        myRole ===
-                        'O'
-                },
-
-                rematchToken:
-                    token,
-
-                newCup
-            }
-        );
+            );
+        try {
+            await window.dbTransaction(
+                matchRef,
+                current => {
+                    if (
+                        !current ||
+                        (
+                            current.roundProcessed !== true &&
+                            !current.result
+                        )
+                    ) {
+                        return current;
+                    }
+                    const rematch = {
+                        ...(current.rematch || {})
+                    };
+                    if (
+                        rematch[myRole] === true
+                    ) {
+                        return current;
+                    }
+                    rematch[myRole] =
+                        true;
+                    current.rematch =
+                        rematch;
+                    current.rematchToken =
+                        current.rematchToken ||
+                        `r_${Date.now()}_${Math.random()
+                            .toString(36)
+                            .slice(2, 7)}`;
+                    current.newCup =
+                        Boolean(
+                            current.result
+                        ) ||
+                        current.format ===
+                            '1' ||
+                        Number(
+                            current.scores?.X
+                        ) >=
+                            targetWins ||
+                        Number(
+                            current.scores?.O
+                        ) >=
+                            targetWins;
+                    return current;
+                }
+            );
+        } catch (e) {
+            console.error(
+                'Could not request rematch',
+                e
+            );
+            getEl(
+                'acceptRematchBtn'
+            ).textContent =
+                currentFormat === '1'
+                    ? 'Play Again'
+                    : 'Next Round / Ready';
+            showCustomAlert(
+                'Rematch',
+                'Could not send the rematch request. Please try again.'
+            );
+        }
     };
-
-
 // ==========================================
 // 26. Emojis
 // ==========================================
-
 document
     .querySelectorAll(
         '.emoji-btn'
@@ -4377,29 +4207,23 @@ document
                 ) {
                     return;
                 }
-
                 emojiCooldown =
                     true;
-
                 setTimeout(
                     () =>
                         emojiCooldown =
                             false,
                     3000
                 );
-
                 const char =
                     e.target
                         .textContent;
-
                 showEmoji(
                     char
                 );
-
                 playSound(
                     'click'
                 );
-
                 if (
                     gameMode ===
                         'online' &&
@@ -4413,10 +4237,8 @@ document
                         {
                             emoji: {
                                 char,
-
                                 sender:
                                     myRole,
-
                                 time:
                                     Date.now()
                             }
@@ -4425,38 +4247,4 @@ document
                 }
             };
     });
-
-function showEmoji(char) {
-    const el =
-        getEl(
-            'floatingEmoji'
-        );
-
-    el.textContent =
-        char;
-
-    el.classList.remove(
-        'opacity-0',
-        '-translate-y-1/2'
-    );
-
-    el.classList.add(
-        'opacity-100',
-        '-translate-y-[200px]'
-    );
-
-    setTimeout(
-        () => {
-            el.classList.add(
-                'opacity-0',
-                '-translate-y-1/2'
-            );
-
-            el.classList.remove(
-                'opacity-100',
-                '-translate-y-[200px]'
-            );
-        },
-        1500
-    );
-}
+```
